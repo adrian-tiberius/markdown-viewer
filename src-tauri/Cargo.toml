@@ -1,0 +1,54 @@
+[workspace]
+members = [
+  ".",
+  "crates/domain",
+  "crates/application",
+  "crates/infrastructure",
+  "crates/presentation",
+]
+resolver = "2"
+
+[workspace.dependencies]
+comrak = { version = "0.50.0", default-features = false }
+log = "0.4.28"
+notify = "8.2.0"
+rfd = "0.17.2"
+serde = { version = "1.0.228", features = ["derive"] }
+tauri = { version = "2.10.2", features = [] }
+tauri-plugin-log = "2.7.1"
+thiserror = "2.0.18"
+url = "2.5.8"
+
+[package]
+name = "app"
+version = "0.1.0-alpha.1"
+description = "Markdown Viewer desktop app"
+authors = ["markdown-viewer"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/adrian-tiberius/markdown-viewer"
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.5", features = [] }
+
+[dependencies]
+log.workspace = true
+tauri.workspace = true
+tauri-plugin-log.workspace = true
+serde.workspace = true
+rfd.workspace = true
+markdown_viewer_application = { path = "crates/application" }
+markdown_viewer_infrastructure = { path = "crates/infrastructure" }
+markdown_viewer_presentation = { path = "crates/presentation" }
+
+[dev-dependencies]
+serde_json = "1.0.149"
+toml = "0.8.23"
+regex = "1.12.2"

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/about-coordinated-disclosure-of-security-vulnerabilities
+    about: Use private vulnerability reporting and follow SECURITY.md.
+  - name: Support
+    url: https://docs.github.com/discussions
+    about: Use discussions when enabled by repository maintainers.
