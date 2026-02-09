@@ -56,7 +56,8 @@ jobs:
             librsvg2-dev \
             patchelf \
             libgtk-3-dev \
-            xvfb
+            xvfb \
+            x11-utils
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version '^2' --locked
@@ -68,10 +69,24 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           set -euo pipefail
-          Xvfb :99 -screen 0 1280x720x24 &
+          Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
           XVFB_PID=$!
           trap 'kill "$XVFB_PID" 2>/dev/null || true' EXIT
           export DISPLAY=:99
+          export GDK_BACKEND=x11
+          unset WAYLAND_DISPLAY
+
+          for _ in $(seq 1 40); do
+            if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.25
+          done
+
+          if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+            echo "Xvfb failed to initialize display $DISPLAY"
+            exit 1
+          fi
 
           ./src-tauri/target/release/app &
           APP_PID=$!
