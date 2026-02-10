@@ -26,7 +26,7 @@ url = "2.5.8"
 
 [package]
 name = "app"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.4"
 description = "Markdown Viewer desktop app"
 authors = ["markdown-viewer"]
 license = "AGPL-3.0-only"
