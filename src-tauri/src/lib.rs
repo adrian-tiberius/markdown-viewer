@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use markdown_viewer_application::error::MarkdownViewerError;
 use markdown_viewer_application::input_ports::{
@@ -8,7 +9,9 @@ use markdown_viewer_application::use_cases::{
     LoadMarkdownFileUseCase, OpenLinkedFileUseCase, WatchMarkdownFileUseCase,
 };
 use markdown_viewer_infrastructure::comrak_renderer::ComrakMarkdownRenderer;
-use markdown_viewer_infrastructure::file_repository::LocalMarkdownFileRepository;
+use markdown_viewer_infrastructure::file_repository::{
+    is_markdown_file, resolve_path_input, LocalMarkdownFileRepository,
+};
 use markdown_viewer_infrastructure::file_watcher::MarkdownFileWatchService;
 use markdown_viewer_infrastructure::linked_file_opener::{
     DetachedLinkedFileOpener, StdPathCanonicalizer,
@@ -17,14 +20,40 @@ use markdown_viewer_presentation::dto::{MarkdownDocumentDto, RenderPreferencesDt
 use markdown_viewer_presentation::state::AppState;
 use serde::Serialize;
 use tauri::Emitter;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 const MARKDOWN_FILE_UPDATED_EVENT: &str = "markdown://file-updated";
+const MARKDOWN_OPEN_PATH_EVENT: &str = "markdown://open-path";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct MarkdownFileUpdatedEvent {
     path: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct MarkdownOpenPathEvent {
+    path: String,
+}
+
+struct LaunchOpenPathState {
+    open_path: Mutex<Option<String>>,
+}
+
+impl LaunchOpenPathState {
+    fn new(open_path: Option<String>) -> Self {
+        Self {
+            open_path: Mutex::new(open_path),
+        }
+    }
+
+    fn take(&self) -> Option<String> {
+        self.open_path
+            .lock()
+            .ok()
+            .and_then(|mut guarded| guarded.take())
+    }
 }
 
 #[tauri::command]
@@ -79,6 +108,11 @@ fn open_linked_file(
         .map_err(to_user_error)
 }
 
+#[tauri::command]
+fn consume_launch_open_path(state: State<'_, LaunchOpenPathState>) -> Option<String> {
+    state.take()
+}
+
 fn load_markdown_file_inner(
     path: &str,
     preferences: Option<RenderPreferencesDto>,
@@ -124,12 +158,53 @@ where
     })
 }
 
+fn first_markdown_path_from_args(args: &[String], cwd: Option<&Path>) -> Option<String> {
+    for arg in args.iter().skip(1) {
+        if let Some(path) = markdown_path_from_arg(arg, cwd) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn markdown_path_from_arg(arg: &str, cwd: Option<&Path>) -> Option<String> {
+    let trimmed = arg.trim();
+    if trimmed.is_empty() || trimmed.starts_with('-') {
+        return None;
+    }
+
+    if let Ok(path) = resolve_path_input(trimmed) {
+        if is_markdown_file(&path) {
+            return Some(path.to_string_lossy().into_owned());
+        }
+    }
+
+    let cwd = cwd?;
+    let joined = cwd.join(trimmed);
+    let joined_string = joined.to_string_lossy().into_owned();
+    if let Ok(path) = resolve_path_input(&joined_string) {
+        if is_markdown_file(&path) {
+            return Some(path.to_string_lossy().into_owned());
+        }
+    }
+
+    None
+}
+
+fn emit_open_path_event(app_handle: &AppHandle, path: String) {
+    let _ = app_handle.emit(MARKDOWN_OPEN_PATH_EVENT, MarkdownOpenPathEvent { path });
+}
+
 fn to_user_error(error: MarkdownViewerError) -> String {
     error.to_string()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let startup_args: Vec<String> = std::env::args().collect();
+    let startup_cwd = std::env::current_dir().ok();
+    let startup_open_path = first_markdown_path_from_args(&startup_args, startup_cwd.as_deref());
+
     let repository = Arc::new(LocalMarkdownFileRepository::new());
     let renderer = Arc::new(ComrakMarkdownRenderer::new());
     let watch_service = Arc::new(MarkdownFileWatchService::new());
@@ -144,6 +219,14 @@ pub fn run() {
     );
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            if let Some(path) = first_markdown_path_from_args(&args, Some(Path::new(&cwd))) {
+                emit_open_path_event(app, path);
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -156,6 +239,7 @@ pub fn run() {
             }
             Ok(())
         })
+        .manage(LaunchOpenPathState::new(startup_open_path))
         .manage(AppState::new(
             load_use_case,
             watch_use_case,
@@ -166,7 +250,8 @@ pub fn run() {
             load_markdown_file,
             start_markdown_watch,
             stop_markdown_watch,
-            open_linked_file
+            open_linked_file,
+            consume_launch_open_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -189,9 +274,10 @@ mod tests {
     };
 
     use super::{
-        load_markdown_file_inner, start_markdown_watch_inner, stop_markdown_watch_inner, AppState,
-        ComrakMarkdownRenderer, LocalMarkdownFileRepository, MarkdownFileUpdatedEvent,
-        MarkdownViewerError, RenderPreferencesDto, MARKDOWN_FILE_UPDATED_EVENT,
+        first_markdown_path_from_args, load_markdown_file_inner, markdown_path_from_arg,
+        start_markdown_watch_inner, stop_markdown_watch_inner, AppState, ComrakMarkdownRenderer,
+        LocalMarkdownFileRepository, MarkdownFileUpdatedEvent, MarkdownViewerError,
+        RenderPreferencesDto, MARKDOWN_FILE_UPDATED_EVENT,
     };
 
     struct TestWatchService {
@@ -258,6 +344,16 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("mdv-command-wiring-{suffix}.md"));
         std::fs::write(&path, contents).expect("temp markdown file should be writable");
+        path
+    }
+
+    fn write_temp_file(extension: &str, contents: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be monotonic after epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("mdv-command-wiring-{suffix}.{extension}"));
+        std::fs::write(&path, contents).expect("temp fixture should be writable");
         path
     }
 
@@ -348,5 +444,56 @@ mod tests {
         let json =
             serde_json::to_value(payload).expect("payload should serialize to a JSON object");
         assert_eq!(json["path"], "/tmp/doc.md");
+    }
+
+    #[test]
+    fn markdown_path_from_arg_resolves_relative_paths_from_working_directory() {
+        let markdown = write_temp_markdown("# launch arg");
+        let parent = markdown
+            .parent()
+            .expect("temp markdown should have parent directory");
+        let file_name = markdown
+            .file_name()
+            .expect("temp markdown should have file name")
+            .to_string_lossy()
+            .into_owned();
+
+        let resolved = markdown_path_from_arg(&file_name, Some(parent))
+            .expect("relative markdown arg should resolve");
+        assert_eq!(
+            resolved,
+            markdown
+                .canonicalize()
+                .expect("temp markdown should canonicalize")
+                .to_string_lossy()
+                .into_owned()
+        );
+
+        let _ = std::fs::remove_file(markdown);
+    }
+
+    #[test]
+    fn first_markdown_path_from_args_uses_first_valid_markdown_candidate() {
+        let text = write_temp_file("txt", "ignore");
+        let markdown = write_temp_markdown("# use this");
+        let args = vec![
+            "app".to_string(),
+            text.to_string_lossy().into_owned(),
+            markdown.to_string_lossy().into_owned(),
+        ];
+
+        let resolved = first_markdown_path_from_args(&args, None)
+            .expect("first valid markdown launch arg should resolve");
+        assert_eq!(
+            resolved,
+            markdown
+                .canonicalize()
+                .expect("temp markdown should canonicalize")
+                .to_string_lossy()
+                .into_owned()
+        );
+
+        let _ = std::fs::remove_file(text);
+        let _ = std::fs::remove_file(markdown);
     }
 }

@@ -266,6 +266,7 @@ export function createMarkdownViewerRuntime(
   const runtimeListenerController = new AppRuntimeListenerController({
     markdownFileUpdates: deps.gateway,
     dragDropEvents: deps.gateway,
+    openPathRequests: deps.gateway,
     ui: {
       dropOverlay: deps.ui.dropOverlay,
     },
@@ -274,6 +275,9 @@ export function createMarkdownViewerRuntime(
       workspaceController.handleFileUpdated(path);
     },
     onDroppedMarkdownPath: (path: string) => {
+      void workspaceController.openDroppedMarkdownPath(path);
+    },
+    onOpenPathRequested: (path: string) => {
       void workspaceController.openDroppedMarkdownPath(path);
     },
     onError: deps.onErrorBanner,

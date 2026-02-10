@@ -18,6 +18,7 @@ This project is an internal alpha tool. Expect active iteration and occasional b
 - `Performance Mode` for lower-cost rendering on heavy documents.
 - `Safe Mode` fallback that shows raw markdown if rendering fails.
 - Command palette quick-open across open tabs and recent documents.
+- Single-instance handoff for markdown files opened via OS launch arguments.
 - Configurable typography/theme settings persisted in local storage.
 - Word count and reading time with configurable counting rules.
 

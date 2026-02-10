@@ -29,6 +29,12 @@ This document defines the runtime contract between the frontend (`frontend/src`)
 - Output: `void`
 - Behavior: stops active watcher if one exists.
 
+### `consume_launch_open_path`
+
+- Input: none
+- Output: `string | null`
+- Behavior: returns a markdown path provided by OS launch/open-with args on first app boot, then clears it.
+
 ## Events
 
 ### `markdown://file-updated`
@@ -43,6 +49,19 @@ interface MarkdownFileUpdatedEvent {
 
 - Emitted by Rust when the watched markdown file changes.
 - Consumed by frontend to trigger conditional reload.
+
+### `markdown://open-path`
+
+- Payload:
+
+```ts
+interface MarkdownOpenPathEvent {
+  path: string;
+}
+```
+
+- Emitted by Rust when a second app instance is invoked with a markdown file path.
+- Consumed by frontend to open the requested markdown file in the running window.
 
 ## DTO Shapes
 

@@ -126,8 +126,10 @@ class FakeGateway implements MarkdownGateway {
   loadCalls: Array<{ path: string; preferences: RenderPreferences }> = [];
   startWatchCalls: string[] = [];
   stopWatchCalls = 0;
+  launchPath: string | null = null;
   protected fileUpdatedHandler: ((event: FileUpdatedEvent) => void) | null = null;
   protected dragDropHandler: ((event: DragDropEventPayload) => void) | null = null;
+  protected openPathHandler: ((path: string) => void) | null = null;
 
   async pickMarkdownFile(): Promise<string | null> {
     return this.pickResult;
@@ -152,6 +154,12 @@ class FakeGateway implements MarkdownGateway {
     this.stopWatchCalls += 1;
   }
 
+  async consumeLaunchOpenPath(): Promise<string | null> {
+    const path = this.launchPath;
+    this.launchPath = null;
+    return path;
+  }
+
   async onMarkdownFileUpdated(handler: (event: FileUpdatedEvent) => void): Promise<() => void> {
     this.fileUpdatedHandler = handler;
     return () => {
@@ -170,12 +178,25 @@ class FakeGateway implements MarkdownGateway {
     };
   }
 
+  async onOpenPathRequested(handler: (path: string) => void): Promise<() => void> {
+    this.openPathHandler = handler;
+    return () => {
+      if (this.openPathHandler === handler) {
+        this.openPathHandler = null;
+      }
+    };
+  }
+
   emitFileUpdated(path: string): void {
     this.fileUpdatedHandler?.({ path });
   }
 
   emitDrop(paths: string[]): void {
     this.dragDropHandler?.({ type: 'drop', paths });
+  }
+
+  emitOpenPath(path: string): void {
+    this.openPathHandler?.(path);
   }
 }
 
@@ -601,6 +622,36 @@ describe('MarkdownViewerApp', () => {
     expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/spec.md');
     expect(context.ui.title.textContent).toBe('Spec');
     expect(context.ui.path.textContent).toBe('/tmp/spec.md');
+
+    await context.app.dispose();
+  });
+
+  it('loads startup markdown path from launch arguments', async () => {
+    const gateway = new FakeGateway();
+    gateway.launchPath = '/tmp/startup.md';
+    const context = setupApp({ gateway });
+
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+      expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/startup.md');
+    });
+
+    await context.app.dispose();
+  });
+
+  it('opens markdown paths from runtime open-path requests and ignores non-markdown paths', async () => {
+    const context = setupApp();
+
+    await flushMicrotasks();
+    context.gateway.emitOpenPath('/tmp/notes.txt');
+    await flushMicrotasks();
+    expect(context.gateway.loadCalls).toHaveLength(0);
+
+    context.gateway.emitOpenPath('/tmp/manual-open.md');
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+      expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/manual-open.md');
+    });
 
     await context.app.dispose();
   });

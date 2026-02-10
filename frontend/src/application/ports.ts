@@ -33,12 +33,18 @@ export interface DragDropEvents {
   onDragDrop(handler: (event: DragDropEventPayload) => void): Promise<() => void>;
 }
 
+export interface OpenPathRequestEvents {
+  consumeLaunchOpenPath(): Promise<string | null>;
+  onOpenPathRequested(handler: (path: string) => void): Promise<() => void>;
+}
+
 export interface MarkdownGateway
   extends MarkdownFilePicker,
     MarkdownFileLoader,
     MarkdownWatchController,
     MarkdownFileUpdateEvents,
-    DragDropEvents {}
+    DragDropEvents,
+    OpenPathRequestEvents {}
 
 export interface MarkdownFormattingEngine {
   renderMathToHtml(formula: string, displayMode: boolean): Promise<string>;

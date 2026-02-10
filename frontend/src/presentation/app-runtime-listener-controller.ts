@@ -2,6 +2,7 @@ import { isMarkdownPath } from '../application/path-utils';
 import type {
   DragDropEvents,
   MarkdownFileUpdateEvents,
+  OpenPathRequestEvents,
 } from '../application/ports';
 import { errorToMessage } from './error-utils';
 import type { ViewerUi } from './ui';
@@ -9,10 +10,12 @@ import type { ViewerUi } from './ui';
 interface AppRuntimeListenerControllerDeps {
   markdownFileUpdates: MarkdownFileUpdateEvents;
   dragDropEvents: DragDropEvents;
+  openPathRequests: OpenPathRequestEvents;
   ui: Pick<ViewerUi, 'dropOverlay'>;
   isLifecycleActive: (lifecycleToken: number) => boolean;
   onFileUpdated: (path: string) => void;
   onDroppedMarkdownPath: (path: string) => void;
+  onOpenPathRequested: (path: string) => void;
   onError: (message: string) => void;
 }
 
@@ -20,6 +23,7 @@ export class AppRuntimeListenerController {
   private readonly deps: AppRuntimeListenerControllerDeps;
   private fileUpdateUnlisten: (() => void) | null = null;
   private dragDropUnlisten: (() => void) | null = null;
+  private openPathUnlisten: (() => void) | null = null;
 
   constructor(deps: AppRuntimeListenerControllerDeps) {
     this.deps = deps;
@@ -68,6 +72,30 @@ export class AppRuntimeListenerController {
         return;
       }
       this.dragDropUnlisten = dragDropUnlisten;
+
+      const openPathUnlisten = await this.deps.openPathRequests.onOpenPathRequested((path) => {
+        if (!this.deps.isLifecycleActive(lifecycleToken)) {
+          return;
+        }
+        if (isMarkdownPath(path)) {
+          this.deps.onOpenPathRequested(path);
+        }
+      });
+
+      if (!this.deps.isLifecycleActive(lifecycleToken)) {
+        openPathUnlisten();
+        return;
+      }
+      this.openPathUnlisten = openPathUnlisten;
+
+      const launchPath = await this.deps.openPathRequests.consumeLaunchOpenPath();
+      if (
+        this.deps.isLifecycleActive(lifecycleToken) &&
+        typeof launchPath === 'string' &&
+        isMarkdownPath(launchPath)
+      ) {
+        this.deps.onOpenPathRequested(launchPath);
+      }
     } catch (error) {
       this.deps.onError(errorToMessage(error));
     }
@@ -79,6 +107,9 @@ export class AppRuntimeListenerController {
 
     this.dragDropUnlisten?.();
     this.dragDropUnlisten = null;
+
+    this.openPathUnlisten?.();
+    this.openPathUnlisten = null;
 
     this.deps.ui.dropOverlay.classList.remove('visible');
   }

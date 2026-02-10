@@ -10,6 +10,7 @@ import type {
 import type { MarkdownDocument, RenderPreferences } from '../domain';
 
 const FILE_UPDATED_EVENT = 'markdown://file-updated';
+const OPEN_PATH_EVENT = 'markdown://open-path';
 
 export class TauriMarkdownGateway implements MarkdownGateway {
   async pickMarkdownFile(): Promise<string | null> {
@@ -31,9 +32,22 @@ export class TauriMarkdownGateway implements MarkdownGateway {
     await invoke('stop_markdown_watch');
   }
 
+  async consumeLaunchOpenPath(): Promise<string | null> {
+    return invoke<string | null>('consume_launch_open_path');
+  }
+
   async onMarkdownFileUpdated(handler: (event: FileUpdatedEvent) => void): Promise<() => void> {
     return listen<FileUpdatedEvent>(FILE_UPDATED_EVENT, (event) => {
       handler(event.payload);
+    });
+  }
+
+  async onOpenPathRequested(handler: (path: string) => void): Promise<() => void> {
+    return listen<{ path: string }>(OPEN_PATH_EVENT, (event) => {
+      const path = event.payload?.path;
+      if (typeof path === 'string' && path.trim().length > 0) {
+        handler(path);
+      }
     });
   }
 
