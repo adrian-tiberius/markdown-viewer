@@ -2,6 +2,13 @@ import './style.css';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 
+import type {
+  AppVersionProvider,
+  DiagnosticsReportWriter,
+  ExternalUrlOpener,
+  MarkdownGateway,
+  UpdateService,
+} from './application/ports';
 import {
   LocalStorageDocumentTabSessionStore,
   LocalStorageRecentDocumentsStore,
@@ -11,13 +18,17 @@ import {
 } from './infrastructure/local-storage';
 import { BrowserMarkdownFormattingEngine } from './infrastructure/markdown-formatting-engine';
 import { BrowserDiagnosticsReportWriter } from './infrastructure/browser-diagnostics-report-writer';
-import { TauriAppVersionProvider } from './infrastructure/tauri-app-version-provider';
-import { TauriExternalUrlOpener } from './infrastructure/tauri-external-url-opener';
-import { TauriMarkdownGateway } from './infrastructure/tauri-markdown-gateway';
-import { TauriUpdaterService } from './infrastructure/tauri-updater-service';
 import { appShell, createViewerUi, MarkdownViewerApp, mountShell } from './presentation';
 
-mountShell('#app', appShell());
+type RuntimeMode = 'tauri' | 'e2e';
+
+interface RuntimeServices {
+  gateway: MarkdownGateway;
+  externalUrlOpener: ExternalUrlOpener;
+  updateService: UpdateService;
+  appVersionProvider: AppVersionProvider;
+  diagnosticsReportWriter: DiagnosticsReportWriter;
+}
 
 function initialDocumentPathFromQuery(): string | null {
   const params = new URLSearchParams(window.location.search);
@@ -30,20 +41,69 @@ function initialDocumentPathFromQuery(): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-const app = new MarkdownViewerApp({
-  ui: createViewerUi(),
-  gateway: new TauriMarkdownGateway(),
-  formattingEngine: new BrowserMarkdownFormattingEngine(),
-  externalUrlOpener: new TauriExternalUrlOpener(),
-  updateService: new TauriUpdaterService(),
-  appVersionProvider: new TauriAppVersionProvider(),
-  diagnosticsReportWriter: new BrowserDiagnosticsReportWriter(),
-  initialDocumentPath: initialDocumentPathFromQuery(),
-  settingsStore: new LocalStorageViewerSettingsStore(),
-  layoutStateStore: new LocalStorageViewerLayoutStateStore(),
-  scrollMemoryStore: new LocalStorageScrollMemoryStore(),
-  tabSessionStore: new LocalStorageDocumentTabSessionStore(),
-  recentDocumentsStore: new LocalStorageRecentDocumentsStore(),
-});
+function runtimeModeFromQuery(): RuntimeMode {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('runtime') === 'e2e' ? 'e2e' : 'tauri';
+}
 
-app.start();
+async function runtimeServicesForMode(mode: RuntimeMode): Promise<RuntimeServices> {
+  if (mode === 'e2e') {
+    const { createE2eRuntimeAdapters, registerE2eControlOnWindow } = await import(
+      './infrastructure/e2e-runtime'
+    );
+    const adapters = createE2eRuntimeAdapters();
+    registerE2eControlOnWindow(adapters.control);
+    return {
+      gateway: adapters.gateway,
+      externalUrlOpener: adapters.externalUrlOpener,
+      updateService: adapters.updateService,
+      appVersionProvider: adapters.appVersionProvider,
+      diagnosticsReportWriter: adapters.diagnosticsReportWriter,
+    };
+  }
+
+  const [
+    { TauriMarkdownGateway },
+    { TauriExternalUrlOpener },
+    { TauriUpdaterService },
+    { TauriAppVersionProvider },
+  ] = await Promise.all([
+    import('./infrastructure/tauri-markdown-gateway'),
+    import('./infrastructure/tauri-external-url-opener'),
+    import('./infrastructure/tauri-updater-service'),
+    import('./infrastructure/tauri-app-version-provider'),
+  ]);
+
+  return {
+    gateway: new TauriMarkdownGateway(),
+    externalUrlOpener: new TauriExternalUrlOpener(),
+    updateService: new TauriUpdaterService(),
+    appVersionProvider: new TauriAppVersionProvider(),
+    diagnosticsReportWriter: new BrowserDiagnosticsReportWriter(),
+  };
+}
+
+async function bootstrap(): Promise<void> {
+  mountShell('#app', appShell());
+  const runtimeServices = await runtimeServicesForMode(runtimeModeFromQuery());
+
+  const app = new MarkdownViewerApp({
+    ui: createViewerUi(),
+    gateway: runtimeServices.gateway,
+    formattingEngine: new BrowserMarkdownFormattingEngine(),
+    externalUrlOpener: runtimeServices.externalUrlOpener,
+    updateService: runtimeServices.updateService,
+    appVersionProvider: runtimeServices.appVersionProvider,
+    diagnosticsReportWriter: runtimeServices.diagnosticsReportWriter,
+    initialDocumentPath: initialDocumentPathFromQuery(),
+    settingsStore: new LocalStorageViewerSettingsStore(),
+    layoutStateStore: new LocalStorageViewerLayoutStateStore(),
+    scrollMemoryStore: new LocalStorageScrollMemoryStore(),
+    tabSessionStore: new LocalStorageDocumentTabSessionStore(),
+    recentDocumentsStore: new LocalStorageRecentDocumentsStore(),
+  });
+
+  app.start();
+}
+
+void bootstrap();
