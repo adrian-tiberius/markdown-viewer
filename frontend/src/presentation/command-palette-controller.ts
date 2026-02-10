@@ -3,9 +3,10 @@ import {
   DEFAULT_COMMAND_PALETTE_COMMANDS,
   filterCommandPaletteCommands,
   type CommandPaletteCommand,
+  type CommandPaletteSelection,
+  selectionFromCommand,
 } from './command-palette';
 import type { ViewerUi } from './ui';
-import type { ViewerAction } from './viewer-actions';
 
 interface CommandPaletteControllerDeps {
   ui: Pick<ViewerUi, 'commandPalette' | 'commandPaletteInput' | 'commandPaletteList'>;
@@ -14,19 +15,25 @@ interface CommandPaletteControllerDeps {
 
 export interface CommandPaletteKeyboardResult {
   handled: boolean;
-  action: ViewerAction | null;
+  selection: CommandPaletteSelection | null;
 }
 
 export class CommandPaletteController {
   private readonly deps: CommandPaletteControllerDeps;
-  private readonly commands: CommandPaletteCommand[];
+  private commands: CommandPaletteCommand[];
   private filteredCommands: CommandPaletteCommand[] = [];
   private selectionIndex = 0;
+  private query = '';
 
   constructor(deps: CommandPaletteControllerDeps) {
     this.deps = deps;
     this.commands = deps.commands ?? [...DEFAULT_COMMAND_PALETTE_COMMANDS];
     this.filter('');
+  }
+
+  setCommands(commands: CommandPaletteCommand[]): void {
+    this.commands = [...commands];
+    this.filter(this.query);
   }
 
   show(): void {
@@ -49,6 +56,7 @@ export class CommandPaletteController {
   }
 
   filter(rawQuery: string): void {
+    this.query = rawQuery;
     this.filteredCommands = filterCommandPaletteCommands(this.commands, rawQuery);
     this.selectionIndex = 0;
     this.render();
@@ -58,7 +66,7 @@ export class CommandPaletteController {
     if (!this.isVisible()) {
       return {
         handled: false,
-        action: null,
+        selection: null,
       };
     }
 
@@ -66,7 +74,7 @@ export class CommandPaletteController {
       this.hide();
       return {
         handled: true,
-        action: null,
+        selection: null,
       };
     }
 
@@ -77,7 +85,7 @@ export class CommandPaletteController {
       }
       return {
         handled: true,
-        action: null,
+        selection: null,
       };
     }
 
@@ -89,7 +97,7 @@ export class CommandPaletteController {
       }
       return {
         handled: true,
-        action: null,
+        selection: null,
       };
     }
 
@@ -98,20 +106,20 @@ export class CommandPaletteController {
       if (!selected) {
         return {
           handled: true,
-          action: null,
+          selection: null,
         };
       }
 
       this.hide();
       return {
         handled: true,
-        action: selected.action,
+        selection: selectionFromCommand(selected),
       };
     }
 
     return {
       handled: false,
-      action: null,
+      selection: null,
     };
   }
 
@@ -133,8 +141,14 @@ export class CommandPaletteController {
         const shortcut = command.shortcut
           ? `<span class="command-palette-shortcut">${escapeHtml(command.shortcut)}</span>`
           : '';
+        const actionAttribute = command.action
+          ? ` data-command-action="${escapeHtml(command.action)}"`
+          : '';
+        const pathAttribute = command.openDocumentPath
+          ? ` data-command-open-path="${escapeHtml(encodeURIComponent(command.openDocumentPath))}"`
+          : '';
         return `<li class="command-palette-item${activeClass}">
-    <button type="button" class="command-palette-button" data-command-action="${escapeHtml(command.action)}">
+    <button type="button" class="command-palette-button"${actionAttribute}${pathAttribute}>
       <span>
         <span class="command-palette-title">${escapeHtml(command.title)}</span>
         <span class="command-palette-description">${escapeHtml(command.description)}</span>

@@ -1,8 +1,10 @@
 import type { CloseTabOutcome } from '../application/document-workspace-tabs-use-case';
+import type { DocumentTabState } from '../application/document-tabs';
 import type {
   MarkdownFilePicker,
   MarkdownWatchController,
 } from '../application/ports';
+import type { RecentDocumentsState } from '../application/recent-documents';
 import type { TocEntry } from '../domain';
 import { errorToMessage } from './error-utils';
 import type { DocumentWorkspaceRuntime } from './document-workspace-runtime';
@@ -146,6 +148,14 @@ export class DocumentWorkspaceController {
 
   currentTocEntries(): TocEntry[] {
     return this.deps.runtime.state.currentTocEntries();
+  }
+
+  tabStateSnapshot(): DocumentTabState {
+    return this.deps.runtime.sessionController.tabStateSnapshot();
+  }
+
+  recentDocumentsSnapshot(): RecentDocumentsState {
+    return this.deps.runtime.sessionController.recentDocumentsSnapshot();
   }
 
   clearRecentDocuments(): void {

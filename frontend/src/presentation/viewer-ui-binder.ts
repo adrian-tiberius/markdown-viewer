@@ -1,3 +1,4 @@
+import type { CommandPaletteSelection } from './command-palette';
 import type { ViewerAction } from './viewer-actions';
 import type { ViewerUi } from './ui';
 
@@ -38,7 +39,7 @@ export interface ViewerUiBindingHandlers {
   onClearRecentDocuments: () => void;
   onOpenRecentDocument: (encodedPath: string) => void;
   onCommandPaletteInput: (value: string) => void;
-  onCommandPaletteAction: (action: ViewerAction) => void;
+  onCommandPaletteAction: (selection: CommandPaletteSelection) => void;
   onCommandPaletteDismiss: () => void;
   onShowShortcutsHelp: () => void;
   onShortcutsClose: () => void;
@@ -163,15 +164,31 @@ export class ViewerUiBinder {
     });
     this.bindListener(ui.commandPaletteList, 'click', (event: Event) => {
       const target = event.target as HTMLElement | null;
-      const actionElement = target?.closest<HTMLButtonElement>('button[data-command-action]');
+      const actionElement = target?.closest<HTMLButtonElement>(
+        'button[data-command-action], button[data-command-open-path]'
+      );
       if (!actionElement) {
         return;
       }
-      const action = actionElement.dataset.commandAction as ViewerAction | undefined;
-      if (!action) {
+
+      const action = actionElement.dataset.commandAction;
+      if (action) {
+        handlers.onCommandPaletteAction({
+          type: 'action',
+          action: action as ViewerAction,
+        });
         return;
       }
-      handlers.onCommandPaletteAction(action);
+
+      const encodedPath = actionElement.dataset.commandOpenPath;
+      if (!encodedPath) {
+        return;
+      }
+
+      handlers.onCommandPaletteAction({
+        type: 'open-document',
+        path: this.decodeUriComponent(encodedPath),
+      });
     });
     this.bindListener(ui.commandPalette, 'click', (event: Event) => {
       if (event.target === ui.commandPalette) {
@@ -225,5 +242,13 @@ export class ViewerUiBinder {
     this.disposers.push(() => {
       target.removeEventListener(type, listener, options);
     });
+  }
+
+  private decodeUriComponent(value: string): string {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
   }
 }

@@ -17,6 +17,7 @@ This project is an internal alpha tool. Expect active iteration and occasional b
 - Table of contents with active-section tracking and collapse/expand controls.
 - `Performance Mode` for lower-cost rendering on heavy documents.
 - `Safe Mode` fallback that shows raw markdown if rendering fails.
+- Command palette quick-open across open tabs and recent documents.
 - Configurable typography/theme settings persisted in local storage.
 - Word count and reading time with configurable counting rules.
 

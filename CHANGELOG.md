@@ -10,6 +10,7 @@ Versioning for release tags.
 ### Added
 
 - In-app update check command wired through Tauri updater plugin (foundation for release update channels).
+- Workspace quick-open commands in the command palette using open tabs and recent documents.
 
 ### Changed
 

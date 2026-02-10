@@ -3,6 +3,7 @@ import type {
   CloseDocumentTabResult,
   DocumentTabState,
 } from '../application/document-tabs';
+import type { RecentDocumentsState } from '../application/recent-documents';
 import type {
   DocumentTabSessionStore,
   RecentDocumentsStore,
@@ -42,6 +43,10 @@ export class DocumentWorkspaceSessionController {
 
   tabStateSnapshot(): DocumentTabState {
     return this.service.tabStateSnapshot();
+  }
+
+  recentDocumentsSnapshot(): RecentDocumentsState {
+    return this.service.recentDocumentsSnapshot();
   }
 
   replaceTabState(state: DocumentTabState): void {

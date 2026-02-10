@@ -1,6 +1,7 @@
 import { resolveKeyboardShortcutIntent } from './keyboard-shortcuts';
 import type { ViewerAction } from './viewer-actions';
 import { CommandPaletteController } from './command-palette-controller';
+import type { CommandPaletteCommand, CommandPaletteSelection } from './command-palette';
 import type { UpdateCheckResult } from '../application/ports';
 import type { FindController } from './find-controller';
 import type { ViewerUi } from './ui';
@@ -11,12 +12,14 @@ interface ViewerCommandControllerDeps {
   findController: FindController;
   isPermissionDialogVisible: () => boolean;
   dismissPermissionDialog: () => void;
+  commandPaletteCommands: () => CommandPaletteCommand[];
   showMessage: (message: string) => void;
   actions: {
     openFile: () => Promise<void>;
     reloadDocument: () => Promise<void>;
     printDocument: () => void;
     checkForUpdates: () => Promise<UpdateCheckResult>;
+    openDocumentPath: (path: string) => Promise<void>;
     closeActiveTab: () => Promise<void>;
     activateAdjacentTab: (direction: 'next' | 'previous') => Promise<void>;
     toggleSidebar: (side: 'left' | 'right') => void;
@@ -38,9 +41,9 @@ export class ViewerCommandController {
     this.deps.commandPaletteController.filter(value);
   }
 
-  async handleCommandPaletteAction(action: ViewerAction): Promise<void> {
+  async handleCommandPaletteAction(selection: CommandPaletteSelection): Promise<void> {
     this.hideCommandPalette();
-    await this.runViewerAction(action);
+    await this.executeCommandPaletteSelection(selection);
   }
 
   dismissCommandPalette(): void {
@@ -52,6 +55,7 @@ export class ViewerCommandController {
       return;
     }
     this.hideShortcutsDialog();
+    this.deps.commandPaletteController.setCommands(this.deps.commandPaletteCommands());
     this.deps.commandPaletteController.show();
   }
 
@@ -109,8 +113,8 @@ export class ViewerCommandController {
       const result = this.deps.commandPaletteController.handleKeyboardEvent(keyboardEvent);
       if (result.handled) {
         keyboardEvent.preventDefault();
-        if (result.action) {
-          await this.runViewerAction(result.action);
+        if (result.selection) {
+          await this.executeCommandPaletteSelection(result.selection);
         }
         return;
       }
@@ -254,6 +258,17 @@ export class ViewerCommandController {
     }
 
     this.deps.findController.step(direction);
+  }
+
+  private async executeCommandPaletteSelection(
+    selection: CommandPaletteSelection
+  ): Promise<void> {
+    if (selection.type === 'action') {
+      await this.runViewerAction(selection.action);
+      return;
+    }
+
+    await this.deps.actions.openDocumentPath(selection.path);
   }
 
   private async runViewerAction(action: ViewerAction): Promise<void> {

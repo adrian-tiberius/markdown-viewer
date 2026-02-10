@@ -19,6 +19,11 @@ import type {
   ViewerLayoutStateStore,
   ViewerSettingsStore,
 } from '../application/ports';
+import { buildWorkspaceQuickOpenItems } from '../application/workspace-quick-open';
+import {
+  createWorkspaceQuickOpenCommands,
+  DEFAULT_COMMAND_PALETTE_COMMANDS,
+} from './command-palette';
 import { TocController } from './toc-controller';
 import type { ViewerUi } from './ui';
 import { ViewerPreferencesController } from './viewer-preferences-controller';
@@ -192,6 +197,18 @@ export function createMarkdownViewerRuntime(
   linkDispatcher.openLocalFile = (path: string, sourceDocumentPath: string) =>
     linkPermissionController.requestLocalFilePermission(path, sourceDocumentPath);
 
+  const commandPaletteCommands = () => {
+    const quickOpenItems = buildWorkspaceQuickOpenItems({
+      tabs: workspaceController.tabStateSnapshot(),
+      recentDocuments: workspaceController.recentDocumentsSnapshot(),
+    });
+
+    return [
+      ...DEFAULT_COMMAND_PALETTE_COMMANDS,
+      ...createWorkspaceQuickOpenCommands(quickOpenItems),
+    ];
+  };
+
   const commandController = new ViewerCommandController({
     ui: {
       shortcutsDialog: deps.ui.shortcutsDialog,
@@ -203,6 +220,7 @@ export function createMarkdownViewerRuntime(
     dismissPermissionDialog: () => {
       permissionDialogController.resolve(false);
     },
+    commandPaletteCommands,
     showMessage: deps.onErrorBanner,
     actions: {
       openFile: () => workspaceController.openPickedFile(),
@@ -211,6 +229,7 @@ export function createMarkdownViewerRuntime(
         window.print();
       },
       checkForUpdates: () => deps.updateService.checkForUpdates(),
+      openDocumentPath: (path: string) => workspaceController.openRecentDocument(path),
       closeActiveTab: () => workspaceController.closeActiveTab(),
       activateAdjacentTab: (direction: 'next' | 'previous') =>
         workspaceController.activateAdjacentTab(direction),
