@@ -12,7 +12,11 @@ import type {
   ScrollMemoryStore,
   ViewerSettingsStore,
 } from './ports';
-import { DEFAULT_SETTINGS, type ViewerSettings } from '../application/settings';
+import {
+  DEFAULT_SETTINGS,
+  MEASURE_WIDTH_MIN,
+  type ViewerSettings,
+} from '../application/settings';
 import {
   type MarkdownDocument,
   type RenderPreferences,
@@ -177,6 +181,10 @@ class MemorySettingsStore implements ViewerSettingsStore {
       tocCollapsed: { ...next.tocCollapsed },
     };
   }
+
+  snapshot(): ViewerSettings {
+    return this.load();
+  }
 }
 
 class MemoryScrollStore implements ScrollMemoryStore {
@@ -250,6 +258,7 @@ function setupApp(options: SetupOptions = {}) {
     app,
     gateway,
     externalUrlOpener,
+    settingsStore,
     scrollStore,
     ui,
   };
@@ -576,6 +585,89 @@ describe('MarkdownViewerApp', () => {
     await flushMicrotasks();
 
     expect(context.gateway.loadCalls).toHaveLength(0);
+  });
+
+  it('toggles sidebars and persists collapse preferences', async () => {
+    const context = setupApp();
+
+    expect(context.ui.workspace.classList.contains('left-collapsed')).toBe(false);
+    expect(context.ui.workspace.classList.contains('right-collapsed')).toBe(false);
+    expect(context.ui.toggleLeftSidebarButton.textContent).toBe('Hide Outline');
+    expect(context.ui.toggleRightSidebarButton.textContent).toBe('Hide Reading');
+
+    context.ui.toggleLeftSidebarButton.click();
+    expect(context.ui.workspace.classList.contains('left-collapsed')).toBe(true);
+    expect(context.ui.toggleLeftSidebarButton.textContent).toBe('Show Outline');
+    expect(context.settingsStore.snapshot().leftSidebarCollapsed).toBe(true);
+
+    context.ui.toggleRightSidebarButton.click();
+    expect(context.ui.workspace.classList.contains('right-collapsed')).toBe(true);
+    expect(context.ui.toggleRightSidebarButton.textContent).toBe('Show Reading');
+    expect(context.settingsStore.snapshot().rightSidebarCollapsed).toBe(true);
+
+    await context.app.dispose();
+  });
+
+  it('applies persisted sidebar collapse state on startup', async () => {
+    const context = setupApp({
+      settingsStore: new MemorySettingsStore({
+        ...DEFAULT_SETTINGS,
+        leftSidebarCollapsed: true,
+        rightSidebarCollapsed: true,
+      }),
+    });
+
+    expect(context.ui.workspace.classList.contains('left-collapsed')).toBe(true);
+    expect(context.ui.workspace.classList.contains('right-collapsed')).toBe(true);
+    expect(context.ui.toggleLeftSidebarButton.textContent).toBe('Show Outline');
+    expect(context.ui.toggleRightSidebarButton.textContent).toBe('Show Reading');
+
+    await context.app.dispose();
+  });
+
+  it('uses full available viewer width when measure width is set to the current slider maximum', async () => {
+    const context = setupApp();
+
+    const dynamicMax = Number(context.ui.measureWidth.max);
+    context.ui.measureWidth.value = dynamicMax.toString();
+    context.ui.measureWidth.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(document.documentElement.style.getPropertyValue('--reader-measure-width')).toBe('100%');
+    expect(context.settingsStore.snapshot().measureWidth).toBe(dynamicMax);
+
+    await context.app.dispose();
+  });
+
+  it('recalculates measure width max on resize and keeps max selection pinned', async () => {
+    const context = setupApp();
+    const viewerScroll = context.ui.viewerScroll;
+
+    Object.defineProperty(viewerScroll, 'clientWidth', {
+      configurable: true,
+      value: 1000,
+    });
+    window.dispatchEvent(new Event('resize'));
+
+    const firstMax = Number(context.ui.measureWidth.max);
+    expect(firstMax).toBeGreaterThanOrEqual(MEASURE_WIDTH_MIN);
+
+    context.ui.measureWidth.value = firstMax.toString();
+    context.ui.measureWidth.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(document.documentElement.style.getPropertyValue('--reader-measure-width')).toBe('100%');
+
+    Object.defineProperty(viewerScroll, 'clientWidth', {
+      configurable: true,
+      value: 1400,
+    });
+    window.dispatchEvent(new Event('resize'));
+
+    const secondMax = Number(context.ui.measureWidth.max);
+    expect(secondMax).toBeGreaterThanOrEqual(firstMax);
+    expect(Number(context.ui.measureWidth.value)).toBe(secondMax);
+    expect(context.settingsStore.snapshot().measureWidth).toBe(secondMax);
+    expect(document.documentElement.style.getPropertyValue('--reader-measure-width')).toBe('100%');
+
+    await context.app.dispose();
   });
 
   it('resolves in-document anchors by link text when the fragment is legacy-style', async () => {

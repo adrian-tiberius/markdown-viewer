@@ -138,12 +138,44 @@ body {
   gap: 0.5rem;
 }
 
+.sidebar-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sidebar-toggle.active {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 62%, transparent);
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(220px, 290px) minmax(0, 1fr) minmax(250px, 320px);
   gap: 0.75rem;
   min-height: 0;
   padding: 0.75rem;
+  transition: grid-template-columns 220ms ease;
+}
+
+.workspace.left-collapsed {
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
+}
+
+.workspace.right-collapsed {
+  grid-template-columns: minmax(220px, 290px) minmax(0, 1fr);
+}
+
+.workspace.left-collapsed.right-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace.left-collapsed .toc-panel {
+  display: none;
+}
+
+.workspace.right-collapsed .settings-panel {
+  display: none;
 }
 
 .panel {
@@ -725,13 +757,25 @@ select {
     grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
   }
 
+  .workspace.left-collapsed,
+  .workspace.left-collapsed.right-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .settings-panel {
+    display: none;
+  }
+
+  #toggle-right-sidebar {
     display: none;
   }
 }
 
 @media (max-width: 920px) {
-  .workspace {
+  .workspace,
+  .workspace.left-collapsed,
+  .workspace.right-collapsed,
+  .workspace.left-collapsed.right-collapsed {
     grid-template-columns: 1fr;
     padding: 0.5rem;
   }

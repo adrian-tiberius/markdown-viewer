@@ -1,7 +1,10 @@
 export interface ViewerUi {
+  workspace: HTMLElement;
   openButton: HTMLButtonElement;
   reloadButton: HTMLButtonElement;
   printButton: HTMLButtonElement;
+  toggleLeftSidebarButton: HTMLButtonElement;
+  toggleRightSidebarButton: HTMLButtonElement;
   perfToggle: HTMLInputElement;
   safeToggle: HTMLInputElement;
   themeSelect: HTMLSelectElement;
@@ -44,9 +47,12 @@ export function mountShell(containerSelector: string, shellHtml: string): void {
 
 export function createViewerUi(): ViewerUi {
   return {
+    workspace: mustGet<HTMLElement>('#workspace'),
     openButton: mustGet<HTMLButtonElement>('#open-file'),
     reloadButton: mustGet<HTMLButtonElement>('#reload-file'),
     printButton: mustGet<HTMLButtonElement>('#print-view'),
+    toggleLeftSidebarButton: mustGet<HTMLButtonElement>('#toggle-left-sidebar'),
+    toggleRightSidebarButton: mustGet<HTMLButtonElement>('#toggle-right-sidebar'),
     perfToggle: mustGet<HTMLInputElement>('#performance-mode'),
     safeToggle: mustGet<HTMLInputElement>('#safe-mode'),
     themeSelect: mustGet<HTMLSelectElement>('#theme-preset'),

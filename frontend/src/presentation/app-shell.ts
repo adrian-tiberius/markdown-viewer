@@ -1,3 +1,5 @@
+import { MEASURE_WIDTH_MAX, MEASURE_WIDTH_MIN } from '../application/settings';
+
 export function appShell(): string {
   return `
     <div class="app-shell">
@@ -8,6 +10,26 @@ export function appShell(): string {
           <button id="print-view" class="btn">Print / PDF</button>
         </div>
         <div class="topbar-right">
+          <div class="sidebar-controls" aria-label="Layout">
+            <button
+              id="toggle-left-sidebar"
+              class="btn ghost sidebar-toggle"
+              type="button"
+              aria-controls="toc-panel"
+              aria-expanded="true"
+            >
+              Hide Outline
+            </button>
+            <button
+              id="toggle-right-sidebar"
+              class="btn ghost sidebar-toggle"
+              type="button"
+              aria-controls="settings-panel"
+              aria-expanded="true"
+            >
+              Hide Reading
+            </button>
+          </div>
           <label class="toggle">
             <input id="performance-mode" type="checkbox" />
             <span>Performance Mode</span>
@@ -21,8 +43,8 @@ export function appShell(): string {
 
       <div id="drop-overlay" class="drop-overlay">Drop markdown file to open</div>
 
-      <div class="workspace">
-        <aside class="panel toc-panel">
+      <div id="workspace" class="workspace">
+        <aside id="toc-panel" class="panel toc-panel">
           <div class="panel-head">
             <h2>Outline</h2>
             <div class="actions">
@@ -65,7 +87,7 @@ export function appShell(): string {
           </section>
         </main>
 
-        <aside class="panel settings-panel">
+        <aside id="settings-panel" class="panel settings-panel">
           <div class="panel-head">
             <h2>Reading</h2>
             <button id="clear-scroll-memory" class="btn ghost">Clear Scroll Memory</button>
@@ -93,7 +115,7 @@ export function appShell(): string {
 
           <label>
             Measure Width
-            <input id="measure-width" type="range" min="58" max="96" step="1" />
+            <input id="measure-width" type="range" min="${MEASURE_WIDTH_MIN}" max="${MEASURE_WIDTH_MAX}" step="1" />
           </label>
 
           <fieldset>

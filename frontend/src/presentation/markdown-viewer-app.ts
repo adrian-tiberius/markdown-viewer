@@ -10,7 +10,11 @@ import {
   shouldReloadForFileUpdate,
 } from '../application/use-cases';
 import { isMarkdownPath } from '../application/path-utils';
-import { type ViewerSettings } from '../application/settings';
+import {
+  MEASURE_WIDTH_MAX,
+  MEASURE_WIDTH_MIN,
+  type ViewerSettings,
+} from '../application/settings';
 import {
   type MarkdownDocument,
   type TocEntry,
@@ -86,6 +90,8 @@ export class MarkdownViewerApp {
     this.disposed = false;
     const lifecycleToken = ++this.lifecycleToken;
     this.setupUiBindings();
+    this.applySidebarLayout();
+    this.refreshMeasureWidthControl({ keepAtMax: true });
     this.applySettingsToControls();
     this.applySettingsToDocument();
     this.installGlobalCrashHandlers();
@@ -225,6 +231,22 @@ export class MarkdownViewerApp {
       void this.reloadCurrentDocument();
     });
 
+    this.bindUiListener(ui.toggleLeftSidebarButton, 'click', () => {
+      this.settings.leftSidebarCollapsed = !this.settings.leftSidebarCollapsed;
+      this.persistSettings();
+      this.applySidebarLayout();
+      this.refreshMeasureWidthControl({ keepAtMax: true });
+      this.applySettingsToDocument();
+    });
+
+    this.bindUiListener(ui.toggleRightSidebarButton, 'click', () => {
+      this.settings.rightSidebarCollapsed = !this.settings.rightSidebarCollapsed;
+      this.persistSettings();
+      this.applySidebarLayout();
+      this.refreshMeasureWidthControl({ keepAtMax: true });
+      this.applySettingsToDocument();
+    });
+
     this.bindUiListener(ui.tabList, 'click', (event) => {
       const target = event.target as HTMLElement | null;
       const actionElement = target?.closest<HTMLButtonElement>('button[data-tab-action]');
@@ -282,6 +304,20 @@ export class MarkdownViewerApp {
       }
     });
 
+    this.bindUiListener(window, 'resize', () => {
+      this.refreshMeasureWidthControl({ keepAtMax: true });
+      this.applySettingsToDocument();
+    });
+
+    this.bindUiListener(ui.workspace, 'transitionend', (event: Event) => {
+      const transitionEvent = event as TransitionEvent;
+      if (transitionEvent.propertyName !== 'grid-template-columns') {
+        return;
+      }
+      this.refreshMeasureWidthControl({ keepAtMax: true });
+      this.applySettingsToDocument();
+    });
+
     this.bindUiListener(ui.perfToggle, 'change', () => {
       this.settings.performanceMode = ui.perfToggle.checked;
       this.persistSettings();
@@ -307,6 +343,7 @@ export class MarkdownViewerApp {
     this.bindUiListener(ui.fontScale, 'input', () => {
       this.settings.fontScale = Number(ui.fontScale.value);
       this.persistSettings();
+      this.refreshMeasureWidthControl({ keepAtMax: true });
       this.applySettingsToDocument();
     });
 
@@ -1381,11 +1418,117 @@ export class MarkdownViewerApp {
     ui.themeSelect.value = this.settings.theme;
     ui.fontScale.value = this.settings.fontScale.toString();
     ui.lineHeight.value = this.settings.lineHeight.toString();
+    ui.measureWidth.min = MEASURE_WIDTH_MIN.toString();
     ui.measureWidth.value = this.settings.measureWidth.toString();
     ui.includeLinks.checked = this.settings.wordCountRules.includeLinks;
     ui.includeCode.checked = this.settings.wordCountRules.includeCode;
     ui.includeFrontMatter.checked = this.settings.wordCountRules.includeFrontMatter;
     ui.tocAutoExpand.checked = this.settings.tocAutoExpand;
+  }
+
+  private refreshMeasureWidthControl(options: { keepAtMax: boolean }): void {
+    const { ui } = this.deps;
+    const previousMax = this.currentMeasureWidthMax();
+    const wasAtMax = this.settings.measureWidth >= previousMax;
+    const nextMax = this.calculateMeasureWidthMaxForLayout();
+
+    ui.measureWidth.min = MEASURE_WIDTH_MIN.toString();
+    ui.measureWidth.max = nextMax.toString();
+
+    const clampedSetting = Math.min(nextMax, Math.max(MEASURE_WIDTH_MIN, this.settings.measureWidth));
+    const nextSetting = options.keepAtMax && wasAtMax ? nextMax : clampedSetting;
+    if (nextSetting !== this.settings.measureWidth) {
+      this.settings.measureWidth = nextSetting;
+      this.persistSettings();
+    }
+    ui.measureWidth.value = this.settings.measureWidth.toString();
+  }
+
+  private calculateMeasureWidthMaxForLayout(): number {
+    const availableWidth = this.deps.ui.viewerScroll.clientWidth;
+    if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
+      return MEASURE_WIDTH_MAX;
+    }
+
+    const articleStyle = window.getComputedStyle(this.deps.ui.markdownContent);
+    const paddingLeft = this.parsePx(articleStyle.paddingLeft);
+    const paddingRight = this.parsePx(articleStyle.paddingRight);
+    const contentWidth = Math.max(0, availableWidth - paddingLeft - paddingRight);
+
+    const chWidth = this.measureCharacterWidthPx(articleStyle);
+    if (chWidth <= 0) {
+      return MEASURE_WIDTH_MAX;
+    }
+
+    const computedMax = Math.floor(contentWidth / chWidth);
+    return Math.max(MEASURE_WIDTH_MIN, Math.min(MEASURE_WIDTH_MAX, computedMax));
+  }
+
+  private measureCharacterWidthPx(articleStyle: CSSStyleDeclaration): number {
+    const probe = document.createElement('span');
+    probe.textContent = '0';
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style.pointerEvents = 'none';
+    probe.style.whiteSpace = 'pre';
+    probe.style.fontFamily = articleStyle.fontFamily || 'serif';
+    probe.style.fontSize = articleStyle.fontSize || '16px';
+    probe.style.fontWeight = articleStyle.fontWeight || '400';
+    probe.style.fontStyle = articleStyle.fontStyle || 'normal';
+
+    this.deps.ui.viewerScroll.append(probe);
+    const measured = probe.getBoundingClientRect().width;
+    probe.remove();
+    if (Number.isFinite(measured) && measured > 0) {
+      return measured;
+    }
+
+    const fallbackFontSize = this.parsePx(articleStyle.fontSize) || 16;
+    return fallbackFontSize * 0.5;
+  }
+
+  private parsePx(value: string): number {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+
+  private currentMeasureWidthMax(): number {
+    const parsed = Number.parseFloat(this.deps.ui.measureWidth.max);
+    if (!Number.isFinite(parsed) || parsed < MEASURE_WIDTH_MIN) {
+      return MEASURE_WIDTH_MAX;
+    }
+    return parsed;
+  }
+
+  private applySidebarLayout(): void {
+    const { ui } = this.deps;
+    const leftCollapsed = this.settings.leftSidebarCollapsed;
+    const rightCollapsed = this.settings.rightSidebarCollapsed;
+
+    ui.workspace.classList.toggle('left-collapsed', leftCollapsed);
+    ui.workspace.classList.toggle('right-collapsed', rightCollapsed);
+
+    this.updateSidebarToggleButton(ui.toggleLeftSidebarButton, {
+      collapsed: leftCollapsed,
+      expandedLabel: 'Hide Outline',
+      collapsedLabel: 'Show Outline',
+    });
+    this.updateSidebarToggleButton(ui.toggleRightSidebarButton, {
+      collapsed: rightCollapsed,
+      expandedLabel: 'Hide Reading',
+      collapsedLabel: 'Show Reading',
+    });
+  }
+
+  private updateSidebarToggleButton(
+    button: HTMLButtonElement,
+    options: { collapsed: boolean; expandedLabel: string; collapsedLabel: string }
+  ): void {
+    const label = options.collapsed ? options.collapsedLabel : options.expandedLabel;
+    button.textContent = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-expanded', String(!options.collapsed));
+    button.classList.toggle('active', !options.collapsed);
   }
 
   private applySettingsToDocument(): void {
@@ -1402,7 +1545,9 @@ export class MarkdownViewerApp {
     );
     document.documentElement.style.setProperty(
       '--reader-measure-width',
-      `${this.settings.measureWidth}ch`
+      this.settings.measureWidth >= this.currentMeasureWidthMax()
+        ? '100%'
+        : `${this.settings.measureWidth}ch`
     );
   }
 
