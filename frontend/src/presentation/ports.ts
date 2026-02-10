@@ -42,3 +42,13 @@ export interface ScrollMemoryStore {
   save(next: Record<string, number>): void;
   clear(): void;
 }
+
+export interface ViewerLayoutState {
+  leftSidebarCollapsed: boolean;
+  rightSidebarCollapsed: boolean;
+}
+
+export interface ViewerLayoutStateStore {
+  load(): ViewerLayoutState;
+  save(next: ViewerLayoutState): void;
+}

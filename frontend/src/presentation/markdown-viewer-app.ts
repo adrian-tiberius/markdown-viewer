@@ -3,6 +3,8 @@ import type {
   MarkdownFormattingEngine,
   MarkdownGateway,
   ScrollMemoryStore,
+  ViewerLayoutState,
+  ViewerLayoutStateStore,
   ViewerSettingsStore,
 } from './ports';
 import {
@@ -11,10 +13,24 @@ import {
 } from '../application/use-cases';
 import { isMarkdownPath } from '../application/path-utils';
 import {
-  MEASURE_WIDTH_MAX,
+  applyLoadedDocumentToTabs,
+  closeDocumentTab,
+  createEmptyDocumentTabState,
+  openDocumentTab,
+  type DocumentTabState,
+} from '../application/document-tabs';
+import {
+  isLinkedFileOutsideScopeError,
+  resolveDocumentLinkIntent,
+} from '../application/link-navigation';
+import {
+  MEASURE_WIDTH_FALLBACK_MAX,
   MEASURE_WIDTH_MIN,
-  type ViewerSettings,
-} from '../application/settings';
+  deriveMeasureWidthMax,
+  measureWidthCssValue,
+  reconcileMeasureWidthOnMaxChange,
+} from '../application/reader-layout';
+import { type ViewerSettings } from '../application/settings';
 import {
   type MarkdownDocument,
   type TocEntry,
@@ -24,10 +40,8 @@ import {
   buildParentMap,
   buildTocTree,
   escapeHtml,
-  filePathToFileUrl,
   hasUriScheme,
   type TocNode,
-  withoutFragment,
 } from './document-view-utils';
 import type { ViewerUi } from './ui';
 
@@ -38,6 +52,7 @@ interface MarkdownViewerAppDeps {
   externalUrlOpener: ExternalUrlOpener;
   initialDocumentPath?: string | null;
   settingsStore: ViewerSettingsStore;
+  layoutStateStore: ViewerLayoutStateStore;
   scrollMemoryStore: ScrollMemoryStore;
 }
 
@@ -46,17 +61,12 @@ interface LoadOptions {
   restoreScroll: boolean;
 }
 
-interface DocumentTab {
-  path: string;
-  title: string;
-}
-
 export class MarkdownViewerApp {
   private readonly deps: MarkdownViewerAppDeps;
   private settings: ViewerSettings;
+  private layoutState: ViewerLayoutState;
   private currentDocument: MarkdownDocument | null = null;
-  private tabs: DocumentTab[] = [];
-  private activeTabPath: string | null = null;
+  private tabState: DocumentTabState = createEmptyDocumentTabState();
   private reloadTimer: number | null = null;
   private activeHeadingId = '';
   private currentLoadNonce = 0;
@@ -80,6 +90,7 @@ export class MarkdownViewerApp {
   constructor(deps: MarkdownViewerAppDeps) {
     this.deps = deps;
     this.settings = this.deps.settingsStore.load();
+    this.layoutState = this.deps.layoutStateStore.load();
   }
 
   start(): void {
@@ -156,8 +167,7 @@ export class MarkdownViewerApp {
 
     await this.deps.gateway.stopMarkdownWatch();
     this.currentDocument = null;
-    this.activeTabPath = null;
-    this.tabs = [];
+    this.tabState = createEmptyDocumentTabState();
     this.renderEmptyState();
   }
 
@@ -232,16 +242,16 @@ export class MarkdownViewerApp {
     });
 
     this.bindUiListener(ui.toggleLeftSidebarButton, 'click', () => {
-      this.settings.leftSidebarCollapsed = !this.settings.leftSidebarCollapsed;
-      this.persistSettings();
+      this.layoutState.leftSidebarCollapsed = !this.layoutState.leftSidebarCollapsed;
+      this.persistLayoutState();
       this.applySidebarLayout();
       this.refreshMeasureWidthControl({ keepAtMax: true });
       this.applySettingsToDocument();
     });
 
     this.bindUiListener(ui.toggleRightSidebarButton, 'click', () => {
-      this.settings.rightSidebarCollapsed = !this.settings.rightSidebarCollapsed;
-      this.persistSettings();
+      this.layoutState.rightSidebarCollapsed = !this.layoutState.rightSidebarCollapsed;
+      this.persistLayoutState();
       this.applySidebarLayout();
       this.refreshMeasureWidthControl({ keepAtMax: true });
       this.applySettingsToDocument();
@@ -475,7 +485,7 @@ export class MarkdownViewerApp {
   }
 
   private async reloadCurrentDocument(): Promise<void> {
-    const path = this.currentDocument?.path ?? this.activeTabPath;
+    const path = this.currentDocument?.path ?? this.tabState.activePath;
     if (!path) {
       return;
     }
@@ -495,10 +505,9 @@ export class MarkdownViewerApp {
     }
 
     this.persistScroll();
-    this.ensureTab(normalizedPath);
-    if (options.activateTab) {
-      this.activeTabPath = normalizedPath;
-    }
+    this.tabState = openDocumentTab(this.tabState, normalizedPath, {
+      activate: options.activateTab,
+    });
     this.renderTabs();
 
     await this.loadDocument(normalizedPath, {
@@ -508,94 +517,48 @@ export class MarkdownViewerApp {
   }
 
   private async closeTab(path: string): Promise<void> {
-    const index = this.tabs.findIndex((tab) => tab.path === path);
-    if (index < 0) {
+    const closed = closeDocumentTab(this.tabState, path);
+    if (!closed.removed) {
       return;
     }
-
-    const wasActive = this.activeTabPath === path;
-    this.tabs.splice(index, 1);
-
-    if (!wasActive) {
+    this.tabState = closed.state;
+    if (!closed.closedActive) {
       this.renderTabs();
       return;
     }
 
     this.persistScroll();
-    if (this.tabs.length === 0) {
-      this.activeTabPath = null;
+    if (this.tabState.tabs.length === 0) {
       this.currentDocument = null;
       await this.deps.gateway.stopMarkdownWatch();
       this.renderEmptyState();
       return;
     }
 
-    const nextIndex = Math.min(index, this.tabs.length - 1);
-    const nextTab = this.tabs[nextIndex];
-    this.activeTabPath = nextTab.path;
+    const nextPath = closed.nextActivePath;
     this.renderTabs();
-    await this.loadDocument(nextTab.path, {
+    if (!nextPath) {
+      return;
+    }
+    await this.loadDocument(nextPath, {
       restartWatch: true,
       restoreScroll: true,
     });
   }
 
-  private ensureTab(path: string): DocumentTab {
-    const existing = this.tabs.find((tab) => tab.path === path);
-    if (existing) {
-      return existing;
-    }
-
-    const tab: DocumentTab = {
-      path,
-      title: this.tabTitleFromPath(path),
-    };
-    this.tabs.push(tab);
-    return tab;
-  }
-
-  private retargetTabPath(requestedPath: string, loadedPath: string): void {
-    if (requestedPath === loadedPath) {
-      return;
-    }
-
-    const requestedIndex = this.tabs.findIndex((tab) => tab.path === requestedPath);
-    if (requestedIndex < 0) {
-      return;
-    }
-
-    const loadedIndex = this.tabs.findIndex((tab) => tab.path === loadedPath);
-    if (loadedIndex >= 0) {
-      this.tabs.splice(requestedIndex, 1);
-    } else {
-      this.tabs[requestedIndex].path = loadedPath;
-    }
-
-    if (this.activeTabPath === requestedPath) {
-      this.activeTabPath = loadedPath;
-    }
-  }
-
-  private tabTitleFromPath(path: string): string {
-    const normalized = path.replace(/\\/g, '/');
-    const segment = normalized.split('/').pop();
-    const title = segment?.trim();
-    return title && title.length > 0 ? title : path;
-  }
-
   private renderTabs(): void {
     const { ui } = this.deps;
-    if (this.tabs.length === 0) {
+    if (this.tabState.tabs.length === 0) {
       ui.tabList.innerHTML = '<li class="doc-tab-empty">No open tabs</li>';
       ui.reloadButton.disabled = true;
       return;
     }
 
     ui.reloadButton.disabled = false;
-    ui.tabList.innerHTML = this.tabs
+    ui.tabList.innerHTML = this.tabState.tabs
       .map((tab) => {
         const encodedPath = encodeURIComponent(tab.path);
-        const isActive = tab.path === this.activeTabPath;
+        const isActive = tab.path === this.tabState.activePath;
         const activeClass = isActive ? ' active' : '';
         return `<li class="doc-tab-item${activeClass}">
     <button type="button" class="doc-tab-button" data-tab-action="activate" data-path="${escapeHtml(encodedPath)}" title="${escapeHtml(tab.path)}">${escapeHtml(tab.title)}</button>
@@ -622,10 +585,12 @@ export class MarkdownViewerApp {
         return;
       }
 
-      this.retargetTabPath(path, documentDto.path);
-      this.activeTabPath = documentDto.path;
-      const tab = this.ensureTab(documentDto.path);
-      tab.title = documentDto.title.trim() || this.tabTitleFromPath(documentDto.path);
+      this.tabState = applyLoadedDocumentToTabs(
+        this.tabState,
+        path,
+        documentDto.path,
+        documentDto.title
+      );
       this.renderTabs();
 
       this.currentDocument = documentDto;
@@ -735,8 +700,6 @@ export class MarkdownViewerApp {
   private wireDocumentLinkHandling(documentPath: string): void {
     const { ui } = this.deps;
     this.linkClickDisposer?.();
-    const documentUrl = withoutFragment(filePathToFileUrl(documentPath));
-    const baseUrl = baseDirectoryFileUrl(documentPath);
     const onClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       const anchor = target?.closest('a[href]') as HTMLAnchorElement | null;
@@ -749,57 +712,34 @@ export class MarkdownViewerApp {
         return;
       }
       const anchorLabel = (anchor.textContent ?? '').trim();
+      const intent = resolveDocumentLinkIntent({
+        href,
+        documentPath,
+      });
+      if (intent.type === 'none') {
+        return;
+      }
 
-      if (href.startsWith('#')) {
-        const heading = this.resolveHeadingTarget(href.slice(1), anchorLabel);
+      event.preventDefault();
+      if (intent.type === 'scroll-to-anchor') {
+        const heading = this.resolveHeadingTarget(intent.fragment, anchorLabel);
         if (heading) {
-          event.preventDefault();
           heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
         return;
       }
 
-      try {
-        const url = new URL(href, baseUrl);
-        if (url.protocol !== 'file:') {
-          if (this.isSupportedExternalProtocol(url.protocol)) {
-            event.preventDefault();
-            void this.requestExternalUrlPermission(url.toString());
-          }
-          return;
-        }
-
-        const targetFile = withoutFragment(url.toString());
-        if (targetFile === documentUrl && url.hash) {
-          const heading = this.resolveHeadingTarget(url.hash.slice(1), anchorLabel);
-          if (heading) {
-            event.preventDefault();
-            heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-          return;
-        }
-
-        if (url.protocol === 'file:') {
-          const targetPath = this.fileUrlToPath(url);
-          if (isMarkdownPath(targetPath)) {
-            event.preventDefault();
-            void this.requestMarkdownLinkPermission(targetPath);
-            return;
-          }
-
-          event.preventDefault();
-          if (!this.isAllowedLinkedFilePath(documentPath, targetPath)) {
-            this.showErrorBanner(
-              'Linked file can only be opened when it is in the same folder or a subfolder of the current markdown document.'
-            );
-            return;
-          }
-          void this.requestLocalFilePermission(targetPath, documentPath);
-          return;
-        }
-      } catch {
-        // Keep browser default behavior when URL parsing fails.
+      if (intent.type === 'open-external-url') {
+        void this.requestExternalUrlPermission(intent.url);
+        return;
       }
+
+      if (intent.type === 'open-markdown-file') {
+        void this.requestMarkdownLinkPermission(intent.path);
+        return;
+      }
+
+      void this.requestLocalFilePermission(intent.path, documentPath);
     };
 
     ui.markdownContent.addEventListener('click', onClick);
@@ -970,63 +910,6 @@ export class MarkdownViewerApp {
     }
   }
 
-  private fileUrlToPath(url: URL): string {
-    const decodedPath = this.decodeUriComponent(url.pathname);
-    if (/^\/[a-zA-Z]:\//.test(decodedPath)) {
-      return decodedPath.slice(1);
-    }
-
-    return decodedPath;
-  }
-
-  private isAllowedLinkedFilePath(sourceDocumentPath: string, targetPath: string): boolean {
-    const sourceDirectory = this.directoryPath(sourceDocumentPath);
-    if (!sourceDirectory) {
-      return false;
-    }
-
-    return this.isPathWithinDirectory(targetPath, sourceDirectory);
-  }
-
-  private directoryPath(path: string): string {
-    const normalized = path.replace(/\\/g, '/');
-    const trimmed = normalized.replace(/\/+$/, '');
-    const separatorIndex = trimmed.lastIndexOf('/');
-    if (separatorIndex < 0) {
-      return '';
-    }
-    if (separatorIndex === 0) {
-      return '/';
-    }
-    return trimmed.slice(0, separatorIndex);
-  }
-
-  private isPathWithinDirectory(path: string, directoryPath: string): boolean {
-    const candidate = this.normalizeFileSystemPath(path);
-    const directory = this.normalizeFileSystemPath(directoryPath);
-    if (!candidate || !directory) {
-      return false;
-    }
-    if (candidate === directory) {
-      return true;
-    }
-
-    const directoryPrefix = directory.endsWith('/') ? directory : `${directory}/`;
-    return candidate.startsWith(directoryPrefix);
-  }
-
-  private normalizeFileSystemPath(path: string): string {
-    const normalized = path.trim().replace(/\\/g, '/');
-    if (!normalized) {
-      return '';
-    }
-
-    if (/^[a-zA-Z]:\//.test(normalized)) {
-      return normalized.toLowerCase();
-    }
-    return normalized;
-  }
-
   private normalizeHeadingText(value: string): string {
     return value
       .toLowerCase()
@@ -1035,10 +918,6 @@ export class MarkdownViewerApp {
       .replace(/[^a-z0-9\s-]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-  }
-
-  private isSupportedExternalProtocol(protocol: string): boolean {
-    return ['http:', 'https:', 'mailto:', 'tel:'].includes(protocol.toLowerCase());
   }
 
   private async openExternalUrl(url: string): Promise<void> {
@@ -1066,7 +945,14 @@ export class MarkdownViewerApp {
     try {
       await this.deps.externalUrlOpener.openExternalPath(path, sourceDocumentPath);
     } catch (error) {
-      this.showErrorBanner(`Unable to open linked file: ${this.errorToMessage(error)}`);
+      const message = this.errorToMessage(error);
+      if (isLinkedFileOutsideScopeError(message)) {
+        this.showErrorBanner(
+          'Linked file can only be opened when it is in the same folder or a subfolder of the current markdown document.'
+        );
+        return;
+      }
+      this.showErrorBanner(`Unable to open linked file: ${message}`);
     }
   }
 
@@ -1429,14 +1315,17 @@ export class MarkdownViewerApp {
   private refreshMeasureWidthControl(options: { keepAtMax: boolean }): void {
     const { ui } = this.deps;
     const previousMax = this.currentMeasureWidthMax();
-    const wasAtMax = this.settings.measureWidth >= previousMax;
     const nextMax = this.calculateMeasureWidthMaxForLayout();
 
     ui.measureWidth.min = MEASURE_WIDTH_MIN.toString();
     ui.measureWidth.max = nextMax.toString();
 
-    const clampedSetting = Math.min(nextMax, Math.max(MEASURE_WIDTH_MIN, this.settings.measureWidth));
-    const nextSetting = options.keepAtMax && wasAtMax ? nextMax : clampedSetting;
+    const nextSetting = reconcileMeasureWidthOnMaxChange({
+      currentWidth: this.settings.measureWidth,
+      previousMax,
+      nextMax,
+      keepAtMax: options.keepAtMax,
+    });
     if (nextSetting !== this.settings.measureWidth) {
       this.settings.measureWidth = nextSetting;
       this.persistSettings();
@@ -1446,22 +1335,16 @@ export class MarkdownViewerApp {
 
   private calculateMeasureWidthMaxForLayout(): number {
     const availableWidth = this.deps.ui.viewerScroll.clientWidth;
-    if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
-      return MEASURE_WIDTH_MAX;
-    }
-
     const articleStyle = window.getComputedStyle(this.deps.ui.markdownContent);
     const paddingLeft = this.parsePx(articleStyle.paddingLeft);
     const paddingRight = this.parsePx(articleStyle.paddingRight);
-    const contentWidth = Math.max(0, availableWidth - paddingLeft - paddingRight);
-
     const chWidth = this.measureCharacterWidthPx(articleStyle);
-    if (chWidth <= 0) {
-      return MEASURE_WIDTH_MAX;
-    }
-
-    const computedMax = Math.floor(contentWidth / chWidth);
-    return Math.max(MEASURE_WIDTH_MIN, Math.min(MEASURE_WIDTH_MAX, computedMax));
+    return deriveMeasureWidthMax({
+      availableWidthPx: availableWidth,
+      horizontalPaddingPx: paddingLeft + paddingRight,
+      chWidthPx: chWidth,
+      fallbackMax: MEASURE_WIDTH_FALLBACK_MAX,
+    });
   }
 
   private measureCharacterWidthPx(articleStyle: CSSStyleDeclaration): number {
@@ -1495,15 +1378,15 @@ export class MarkdownViewerApp {
   private currentMeasureWidthMax(): number {
     const parsed = Number.parseFloat(this.deps.ui.measureWidth.max);
     if (!Number.isFinite(parsed) || parsed < MEASURE_WIDTH_MIN) {
-      return MEASURE_WIDTH_MAX;
+      return MEASURE_WIDTH_FALLBACK_MAX;
     }
     return parsed;
   }
 
   private applySidebarLayout(): void {
     const { ui } = this.deps;
-    const leftCollapsed = this.settings.leftSidebarCollapsed;
-    const rightCollapsed = this.settings.rightSidebarCollapsed;
+    const leftCollapsed = this.layoutState.leftSidebarCollapsed;
+    const rightCollapsed = this.layoutState.rightSidebarCollapsed;
 
     ui.workspace.classList.toggle('left-collapsed', leftCollapsed);
     ui.workspace.classList.toggle('right-collapsed', rightCollapsed);
@@ -1545,9 +1428,7 @@ export class MarkdownViewerApp {
     );
     document.documentElement.style.setProperty(
       '--reader-measure-width',
-      this.settings.measureWidth >= this.currentMeasureWidthMax()
-        ? '100%'
-        : `${this.settings.measureWidth}ch`
+      measureWidthCssValue(this.settings.measureWidth, this.currentMeasureWidthMax())
     );
   }
 
@@ -1621,6 +1502,10 @@ export class MarkdownViewerApp {
 
   private persistSettings(): void {
     this.deps.settingsStore.save(this.settings);
+  }
+
+  private persistLayoutState(): void {
+    this.deps.layoutStateStore.save(this.layoutState);
   }
 
   private nextFrame(): Promise<void> {

@@ -4,6 +4,7 @@ import 'katex/dist/katex.min.css';
 
 import {
   LocalStorageScrollMemoryStore,
+  LocalStorageViewerLayoutStateStore,
   LocalStorageViewerSettingsStore,
 } from './infrastructure/local-storage';
 import { BrowserMarkdownFormattingEngine } from './infrastructure/markdown-formatting-engine';
@@ -31,6 +32,7 @@ const app = new MarkdownViewerApp({
   externalUrlOpener: new TauriExternalUrlOpener(),
   initialDocumentPath: initialDocumentPathFromQuery(),
   settingsStore: new LocalStorageViewerSettingsStore(),
+  layoutStateStore: new LocalStorageViewerLayoutStateStore(),
   scrollMemoryStore: new LocalStorageScrollMemoryStore(),
 });
 

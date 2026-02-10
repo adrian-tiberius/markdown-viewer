@@ -1,4 +1,4 @@
-import { MEASURE_WIDTH_MAX, MEASURE_WIDTH_MIN } from '../application/settings';
+import { MEASURE_WIDTH_FALLBACK_MAX, MEASURE_WIDTH_MIN } from '../application/reader-layout';
 
 export function appShell(): string {
   return `
@@ -115,7 +115,7 @@ export function appShell(): string {
 
           <label>
             Measure Width
-            <input id="measure-width" type="range" min="${MEASURE_WIDTH_MIN}" max="${MEASURE_WIDTH_MAX}" step="1" />
+            <input id="measure-width" type="range" min="${MEASURE_WIDTH_MIN}" max="${MEASURE_WIDTH_FALLBACK_MAX}" step="1" />
           </label>
 
           <fieldset>

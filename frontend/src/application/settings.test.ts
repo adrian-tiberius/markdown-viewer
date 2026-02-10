@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_SETTINGS, MEASURE_WIDTH_MAX, mergeViewerSettings } from './settings';
+import { MEASURE_WIDTH_FALLBACK_MAX } from './reader-layout';
+import { DEFAULT_SETTINGS, mergeViewerSettings } from './settings';
 
 describe('settings', () => {
   it('returns defaults for missing input', () => {
@@ -11,8 +12,6 @@ describe('settings', () => {
     const merged = mergeViewerSettings({
       performanceMode: 'yes' as unknown as boolean,
       safeMode: true,
-      leftSidebarCollapsed: 'yes' as unknown as boolean,
-      rightSidebarCollapsed: true,
       theme: 'unknown-theme' as unknown as 'paper',
       fontScale: 9 as unknown as number,
       lineHeight: Number.NaN,
@@ -31,8 +30,6 @@ describe('settings', () => {
 
     expect(merged.performanceMode).toBe(DEFAULT_SETTINGS.performanceMode);
     expect(merged.safeMode).toBe(true);
-    expect(merged.leftSidebarCollapsed).toBe(DEFAULT_SETTINGS.leftSidebarCollapsed);
-    expect(merged.rightSidebarCollapsed).toBe(true);
     expect(merged.theme).toBe(DEFAULT_SETTINGS.theme);
     expect(merged.fontScale).toBe(1.3);
     expect(merged.lineHeight).toBe(DEFAULT_SETTINGS.lineHeight);
@@ -51,6 +48,6 @@ describe('settings', () => {
       measureWidth: 999 as unknown as number,
     });
 
-    expect(merged.measureWidth).toBe(MEASURE_WIDTH_MAX);
+    expect(merged.measureWidth).toBe(MEASURE_WIDTH_FALLBACK_MAX);
   });
 });

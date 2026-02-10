@@ -10,13 +10,14 @@ import type {
   MarkdownFormattingEngine,
   MarkdownGateway,
   ScrollMemoryStore,
+  ViewerLayoutStateStore,
   ViewerSettingsStore,
 } from './ports';
 import {
   DEFAULT_SETTINGS,
-  MEASURE_WIDTH_MIN,
   type ViewerSettings,
 } from '../application/settings';
+import { MEASURE_WIDTH_MIN } from '../application/reader-layout';
 import {
   type MarkdownDocument,
   type RenderPreferences,
@@ -187,6 +188,34 @@ class MemorySettingsStore implements ViewerSettingsStore {
   }
 }
 
+class MemoryLayoutStateStore implements ViewerLayoutStateStore {
+  private state = {
+    leftSidebarCollapsed: false,
+    rightSidebarCollapsed: false,
+  };
+
+  constructor(
+    initial: { leftSidebarCollapsed: boolean; rightSidebarCollapsed: boolean } = {
+      leftSidebarCollapsed: false,
+      rightSidebarCollapsed: false,
+    }
+  ) {
+    this.state = { ...initial };
+  }
+
+  load() {
+    return { ...this.state };
+  }
+
+  save(next: { leftSidebarCollapsed: boolean; rightSidebarCollapsed: boolean }): void {
+    this.state = { ...next };
+  }
+
+  snapshot() {
+    return this.load();
+  }
+}
+
 class MemoryScrollStore implements ScrollMemoryStore {
   clearCalls = 0;
   private memory: Record<string, number> = {};
@@ -214,6 +243,7 @@ class FakeFormattingEngine implements MarkdownFormattingEngine {
 class FakeExternalUrlOpener implements ExternalUrlOpener {
   openUrlCalls: string[] = [];
   openPathCalls: Array<{ path: string; sourceDocumentPath: string }> = [];
+  openPathError: Error | null = null;
 
   async openExternalUrl(url: string): Promise<void> {
     this.openUrlCalls.push(url);
@@ -221,6 +251,9 @@ class FakeExternalUrlOpener implements ExternalUrlOpener {
 
   async openExternalPath(path: string, sourceDocumentPath: string): Promise<void> {
     this.openPathCalls.push({ path, sourceDocumentPath });
+    if (this.openPathError) {
+      throw this.openPathError;
+    }
   }
 }
 
@@ -230,6 +263,7 @@ interface SetupOptions {
   externalUrlOpener?: ExternalUrlOpener;
   initialDocumentPath?: string | null;
   settingsStore?: MemorySettingsStore;
+  layoutStore?: MemoryLayoutStateStore;
   scrollStore?: MemoryScrollStore;
 }
 
@@ -242,6 +276,7 @@ function setupApp(options: SetupOptions = {}) {
   const formattingEngine = options.formattingEngine ?? new FakeFormattingEngine();
   const externalUrlOpener = options.externalUrlOpener ?? new FakeExternalUrlOpener();
   const settingsStore = options.settingsStore ?? new MemorySettingsStore();
+  const layoutStore = options.layoutStore ?? new MemoryLayoutStateStore();
   const scrollStore = options.scrollStore ?? new MemoryScrollStore();
   const app = new MarkdownViewerApp({
     ui,
@@ -250,6 +285,7 @@ function setupApp(options: SetupOptions = {}) {
     externalUrlOpener,
     initialDocumentPath: options.initialDocumentPath,
     settingsStore,
+    layoutStateStore: layoutStore,
     scrollMemoryStore: scrollStore,
   });
   app.start();
@@ -259,6 +295,7 @@ function setupApp(options: SetupOptions = {}) {
     gateway,
     externalUrlOpener,
     settingsStore,
+    layoutStore,
     scrollStore,
     ui,
   };
@@ -598,20 +635,19 @@ describe('MarkdownViewerApp', () => {
     context.ui.toggleLeftSidebarButton.click();
     expect(context.ui.workspace.classList.contains('left-collapsed')).toBe(true);
     expect(context.ui.toggleLeftSidebarButton.textContent).toBe('Show Outline');
-    expect(context.settingsStore.snapshot().leftSidebarCollapsed).toBe(true);
+    expect(context.layoutStore.snapshot().leftSidebarCollapsed).toBe(true);
 
     context.ui.toggleRightSidebarButton.click();
     expect(context.ui.workspace.classList.contains('right-collapsed')).toBe(true);
     expect(context.ui.toggleRightSidebarButton.textContent).toBe('Show Reading');
-    expect(context.settingsStore.snapshot().rightSidebarCollapsed).toBe(true);
+    expect(context.layoutStore.snapshot().rightSidebarCollapsed).toBe(true);
 
     await context.app.dispose();
   });
 
   it('applies persisted sidebar collapse state on startup', async () => {
     const context = setupApp({
-      settingsStore: new MemorySettingsStore({
-        ...DEFAULT_SETTINGS,
+      layoutStore: new MemoryLayoutStateStore({
         leftSidebarCollapsed: true,
         rightSidebarCollapsed: true,
       }),
@@ -896,6 +932,7 @@ describe('MarkdownViewerApp', () => {
       html: '<p><a href="../outside.txt">Outside file</a></p>',
     };
     const externalUrlOpener = new FakeExternalUrlOpener();
+    externalUrlOpener.openPathError = new Error('Linked file is outside allowed directory: /tmp');
     const context = setupApp({ gateway, externalUrlOpener });
 
     await flushMicrotasks();
@@ -907,10 +944,12 @@ describe('MarkdownViewerApp', () => {
 
     const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
     link!.dispatchEvent(clickEvent);
+    await flushMicrotasks();
 
     expect(clickEvent.defaultPrevented).toBe(true);
-    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(false);
-    expect(externalUrlOpener.openPathCalls).toEqual([]);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(true);
+    await allowPermission(context.ui);
+    expect(externalUrlOpener.openPathCalls).toHaveLength(1);
     expect(context.ui.errorBanner.classList.contains('visible')).toBe(true);
     expect(context.ui.errorText.textContent).toContain('same folder or a subfolder');
 

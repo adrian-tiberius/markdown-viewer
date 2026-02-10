@@ -1,12 +1,14 @@
 import type { RenderPreferences, WordCountRules } from '../domain';
+import {
+  MEASURE_WIDTH_FALLBACK_MAX,
+  sanitizeMeasureWidth,
+} from './reader-layout';
 
 export type ThemePreset = 'paper' | 'slate' | 'contrast-light' | 'contrast-dark';
 
 export interface ViewerSettings {
   performanceMode: boolean;
   safeMode: boolean;
-  leftSidebarCollapsed: boolean;
-  rightSidebarCollapsed: boolean;
   theme: ThemePreset;
   fontScale: number;
   lineHeight: number;
@@ -19,8 +21,6 @@ export interface ViewerSettings {
 export const DEFAULT_SETTINGS: ViewerSettings = {
   performanceMode: false,
   safeMode: false,
-  leftSidebarCollapsed: false,
-  rightSidebarCollapsed: false,
   theme: 'paper',
   fontScale: 1,
   lineHeight: 1.62,
@@ -36,9 +36,6 @@ export const DEFAULT_SETTINGS: ViewerSettings = {
 
 const FONT_SCALE_RANGE = { min: 0.85, max: 1.3 };
 const LINE_HEIGHT_RANGE = { min: 1.35, max: 2.0 };
-export const MEASURE_WIDTH_MIN = 58;
-export const MEASURE_WIDTH_MAX = 480;
-const MEASURE_WIDTH_RANGE = { min: MEASURE_WIDTH_MIN, max: MEASURE_WIDTH_MAX };
 const THEME_PRESETS: ThemePreset[] = ['paper', 'slate', 'contrast-light', 'contrast-dark'];
 
 export function mergeViewerSettings(
@@ -59,14 +56,6 @@ export function mergeViewerSettings(
     ...DEFAULT_SETTINGS,
     performanceMode: asBoolean(source.performanceMode, DEFAULT_SETTINGS.performanceMode),
     safeMode: asBoolean(source.safeMode, DEFAULT_SETTINGS.safeMode),
-    leftSidebarCollapsed: asBoolean(
-      source.leftSidebarCollapsed,
-      DEFAULT_SETTINGS.leftSidebarCollapsed
-    ),
-    rightSidebarCollapsed: asBoolean(
-      source.rightSidebarCollapsed,
-      DEFAULT_SETTINGS.rightSidebarCollapsed
-    ),
     theme: asThemePreset(source.theme, DEFAULT_SETTINGS.theme),
     fontScale: asNumberInRange(
       source.fontScale,
@@ -80,12 +69,10 @@ export function mergeViewerSettings(
       LINE_HEIGHT_RANGE.min,
       LINE_HEIGHT_RANGE.max
     ),
-    measureWidth: asNumberInRange(
+    measureWidth: sanitizeMeasureWidth(
       source.measureWidth,
       DEFAULT_SETTINGS.measureWidth,
-      MEASURE_WIDTH_RANGE.min,
-      MEASURE_WIDTH_RANGE.max,
-      true
+      MEASURE_WIDTH_FALLBACK_MAX
     ),
     tocAutoExpand: asBoolean(source.tocAutoExpand, DEFAULT_SETTINGS.tocAutoExpand),
     wordCountRules: {
