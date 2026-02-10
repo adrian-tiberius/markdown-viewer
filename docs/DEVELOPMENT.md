@@ -123,3 +123,10 @@ pnpm --dir frontend build
 cd src-tauri
 cargo tauri build
 ```
+
+- Linux desktop runtime smoke test (release binary):
+
+```bash
+cargo build --release --manifest-path src-tauri/Cargo.toml
+./scripts/smoke-desktop-linux.sh ./src-tauri/target/release/app
+```

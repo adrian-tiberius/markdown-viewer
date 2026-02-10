@@ -12,6 +12,7 @@ Versioning for release tags.
 - In-app update check command wired through Tauri updater plugin (foundation for release update channels).
 - Workspace quick-open commands in the command palette using open tabs and recent documents.
 - Single-instance markdown open handoff via launch argument event + startup path consumption command.
+- Linux desktop smoke script added and wired into CI for every push/PR run.
 
 ### Changed
 
