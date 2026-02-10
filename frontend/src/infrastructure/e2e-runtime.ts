@@ -104,6 +104,20 @@ interface MutableE2eState {
 }
 
 const DEFAULT_UPDATE_RESULT: UpdateCheckResult = { status: 'up-to-date' };
+const DEFAULT_APP_VERSION = '0.0.0-e2e';
+
+type E2eBootstrapState = Partial<
+  Pick<
+    MarkdownViewerE2eSnapshot,
+    | 'documents'
+    | 'loadFailures'
+    | 'launchOpenPath'
+    | 'pickMarkdownPath'
+    | 'watchedPath'
+    | 'appVersion'
+    | 'updateResult'
+  >
+>;
 
 class E2eMarkdownGateway implements MarkdownGateway {
   private readonly state: MutableE2eState;
@@ -248,7 +262,7 @@ class E2eControl implements MarkdownViewerE2eControl {
     this.state.launchOpenPath = null;
     this.state.pickMarkdownPath = null;
     this.state.watchedPath = null;
-    this.state.appVersion = '0.0.0-e2e';
+    this.state.appVersion = DEFAULT_APP_VERSION;
     this.state.updateResult = cloneUpdateResult(DEFAULT_UPDATE_RESULT);
     this.state.diagnosticsReports = [];
     this.state.calls = emptyCallLog();
@@ -364,14 +378,29 @@ class E2eControl implements MarkdownViewerE2eControl {
 }
 
 function createMutableState(): MutableE2eState {
+  const bootstrap = readBootstrapStateFromWindow();
+  const documentsByPath = new Map<string, MarkdownDocument>();
+  for (const document of bootstrap.documents) {
+    documentsByPath.set(document.path, cloneDocument(document));
+  }
+
+  const loadFailuresByPath = new Map<string, string>();
+  for (const failure of bootstrap.loadFailures) {
+    const path = normalizePath(failure.path);
+    const reason = failure.reason.trim();
+    if (path && reason) {
+      loadFailuresByPath.set(path, reason);
+    }
+  }
+
   return {
-    documentsByPath: new Map<string, MarkdownDocument>(),
-    loadFailuresByPath: new Map<string, string>(),
-    launchOpenPath: null,
-    pickMarkdownPath: null,
-    watchedPath: null,
-    appVersion: '0.0.0-e2e',
-    updateResult: cloneUpdateResult(DEFAULT_UPDATE_RESULT),
+    documentsByPath,
+    loadFailuresByPath,
+    launchOpenPath: bootstrap.launchOpenPath,
+    pickMarkdownPath: bootstrap.pickMarkdownPath,
+    watchedPath: bootstrap.watchedPath,
+    appVersion: bootstrap.appVersion,
+    updateResult: bootstrap.updateResult,
     diagnosticsReports: [],
     calls: emptyCallLog(),
     listeners: {
@@ -487,6 +516,114 @@ function countWords(source: string): number {
   return source.split(/\s+/).filter(Boolean).length;
 }
 
+function readBootstrapStateFromWindow(): {
+  documents: MarkdownDocument[];
+  loadFailures: Array<{ path: string; reason: string }>;
+  launchOpenPath: string | null;
+  pickMarkdownPath: string | null;
+  watchedPath: string | null;
+  appVersion: string;
+  updateResult: UpdateCheckResult;
+} {
+  if (typeof window === 'undefined') {
+    return {
+      documents: [],
+      loadFailures: [],
+      launchOpenPath: null,
+      pickMarkdownPath: null,
+      watchedPath: null,
+      appVersion: DEFAULT_APP_VERSION,
+      updateResult: cloneUpdateResult(DEFAULT_UPDATE_RESULT),
+    };
+  }
+
+  const raw = window.__MDV_E2E_BOOTSTRAP__;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {
+      documents: [],
+      loadFailures: [],
+      launchOpenPath: null,
+      pickMarkdownPath: null,
+      watchedPath: null,
+      appVersion: DEFAULT_APP_VERSION,
+      updateResult: cloneUpdateResult(DEFAULT_UPDATE_RESULT),
+    };
+  }
+
+  const documents = Array.isArray(raw.documents)
+    ? raw.documents.filter(isMarkdownDocumentCandidate).map((document) => cloneDocument(document))
+    : [];
+
+  const loadFailures = Array.isArray(raw.loadFailures)
+    ? raw.loadFailures
+        .filter(isLoadFailureCandidate)
+        .map((failure) => ({
+          path: normalizePath(failure.path),
+          reason: failure.reason.trim(),
+        }))
+        .filter((failure) => failure.path.length > 0 && failure.reason.length > 0)
+    : [];
+
+  return {
+    documents,
+    loadFailures,
+    launchOpenPath: normalizeOptionalPath(raw.launchOpenPath ?? null),
+    pickMarkdownPath: normalizeOptionalPath(raw.pickMarkdownPath ?? null),
+    watchedPath: normalizeOptionalPath(raw.watchedPath ?? null),
+    appVersion:
+      typeof raw.appVersion === 'string' && raw.appVersion.trim().length > 0
+        ? raw.appVersion.trim()
+        : DEFAULT_APP_VERSION,
+    updateResult: isUpdateResult(raw.updateResult)
+      ? cloneUpdateResult(raw.updateResult)
+      : cloneUpdateResult(DEFAULT_UPDATE_RESULT),
+  };
+}
+
+function isUpdateResult(value: unknown): value is UpdateCheckResult {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const asRecord = value as Record<string, unknown>;
+  if (asRecord.status === 'up-to-date') {
+    return true;
+  }
+  if (asRecord.status === 'update-installed') {
+    return typeof asRecord.version === 'string';
+  }
+  if (asRecord.status === 'unavailable') {
+    return typeof asRecord.reason === 'string';
+  }
+  return false;
+}
+
+function isMarkdownDocumentCandidate(value: unknown): value is MarkdownDocument {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const asRecord = value as Record<string, unknown>;
+  return (
+    typeof asRecord.path === 'string' &&
+    typeof asRecord.title === 'string' &&
+    typeof asRecord.source === 'string' &&
+    typeof asRecord.html === 'string' &&
+    Array.isArray(asRecord.toc) &&
+    typeof asRecord.wordCount === 'number' &&
+    typeof asRecord.readingTimeMinutes === 'number'
+  );
+}
+
+function isLoadFailureCandidate(value: unknown): value is { path: string; reason: string } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const asRecord = value as Record<string, unknown>;
+  return typeof asRecord.path === 'string' && typeof asRecord.reason === 'string';
+}
+
 function numberOrFallback(value: unknown, fallback: number, minimum: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return Math.max(minimum, Math.floor(fallback));
@@ -509,11 +646,14 @@ export function createE2eRuntimeAdapters(): E2eRuntimeAdapters {
 }
 
 export function registerE2eControlOnWindow(control: MarkdownViewerE2eControl): void {
-  window.__MDV_E2E__ = control;
+  if (typeof window !== 'undefined') {
+    window.__MDV_E2E__ = control;
+  }
 }
 
 declare global {
   interface Window {
     __MDV_E2E__?: MarkdownViewerE2eControl;
+    __MDV_E2E_BOOTSTRAP__?: E2eBootstrapState;
   }
 }

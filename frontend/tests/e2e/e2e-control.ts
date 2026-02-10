@@ -122,3 +122,13 @@ export async function snapshot(page: Page): Promise<MarkdownViewerE2eSnapshot> {
     return control.snapshot();
   });
 }
+
+export async function bootstrapNextNavigation(
+  page: Page,
+  seededSnapshot?: MarkdownViewerE2eSnapshot
+): Promise<void> {
+  const state = seededSnapshot ?? (await snapshot(page));
+  await page.addInitScript((bootstrap) => {
+    window.__MDV_E2E_BOOTSTRAP__ = bootstrap;
+  }, state);
+}

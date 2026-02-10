@@ -107,4 +107,56 @@ describe('e2e-runtime', () => {
       },
     ]);
   });
+
+  it('hydrates runtime state from bootstrap payload on window', async () => {
+    const globalWithWindow = globalThis as { window?: unknown };
+    const previousWindow = globalWithWindow.window;
+
+    try {
+      globalWithWindow.window = {
+        __MDV_E2E_BOOTSTRAP__: {
+          documents: [
+            {
+              path: '/tmp/specs/bootstrap.md',
+              title: 'Bootstrap Doc',
+              source: '# Bootstrap Doc',
+              html: '<h1 id="mdv-bootstrap-doc">Bootstrap Doc</h1>',
+              toc: [{ level: 1, id: 'mdv-bootstrap-doc', text: 'Bootstrap Doc' }],
+              wordCount: 2,
+              readingTimeMinutes: 1,
+            },
+          ],
+          pickMarkdownPath: '/tmp/specs/bootstrap.md',
+          appVersion: '7.7.7-bootstrap',
+          updateResult: { status: 'unavailable', reason: 'feed offline' },
+        },
+      };
+
+      const runtime = createE2eRuntimeAdapters();
+      await expect(runtime.gateway.pickMarkdownFile()).resolves.toBe('/tmp/specs/bootstrap.md');
+      await expect(
+        runtime.gateway.loadMarkdownFile('/tmp/specs/bootstrap.md', {
+          performanceMode: false,
+          wordCountRules: {
+            includeLinks: true,
+            includeCode: false,
+            includeFrontMatter: false,
+          },
+        })
+      ).resolves.toMatchObject({
+        title: 'Bootstrap Doc',
+      });
+      await expect(runtime.appVersionProvider.getAppVersion()).resolves.toBe('7.7.7-bootstrap');
+      await expect(runtime.updateService.checkForUpdates()).resolves.toEqual({
+        status: 'unavailable',
+        reason: 'feed offline',
+      });
+    } finally {
+      if (typeof previousWindow !== 'undefined') {
+        globalWithWindow.window = previousWindow;
+      } else {
+        Reflect.deleteProperty(globalWithWindow, 'window');
+      }
+    }
+  });
 });
