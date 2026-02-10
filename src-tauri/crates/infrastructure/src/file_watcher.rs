@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -26,7 +26,7 @@ struct ActiveWatcher {
     _watched_file: PathBuf,
     _watched_dir: PathBuf,
     _watcher: Option<RecommendedWatcher>,
-    stop_flag: Arc<AtomicBool>,
+    poll_stop_sender: Option<Sender<()>>,
     poll_thread: Option<JoinHandle<()>>,
 }
 
@@ -75,25 +75,28 @@ impl MarkdownFileWatchService {
         &self,
         watched_file: PathBuf,
         on_changed: Arc<dyn Fn(String) + Send + Sync>,
-    ) -> (Arc<AtomicBool>, JoinHandle<()>) {
-        let stop_flag = Arc::new(AtomicBool::new(false));
-        let stop_for_thread = Arc::clone(&stop_flag);
+    ) -> (Sender<()>, JoinHandle<()>) {
+        let (stop_sender, stop_receiver) = mpsc::channel::<()>();
         let file_for_thread = watched_file.clone();
         let callback_for_thread = Arc::clone(&on_changed);
 
         let thread = thread::spawn(move || {
             let mut last_metadata = read_metadata_signature(&file_for_thread);
-            while !stop_for_thread.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                let current_metadata = read_metadata_signature(&file_for_thread);
-                if current_metadata != last_metadata {
-                    last_metadata = current_metadata;
-                    callback_for_thread(file_for_thread.to_string_lossy().into_owned());
+            loop {
+                match stop_receiver.recv_timeout(Duration::from_millis(POLL_INTERVAL_MS)) {
+                    Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+                    Err(RecvTimeoutError::Timeout) => {
+                        let current_metadata = read_metadata_signature(&file_for_thread);
+                        if current_metadata != last_metadata {
+                            last_metadata = current_metadata;
+                            callback_for_thread(file_for_thread.to_string_lossy().into_owned());
+                        }
+                    }
                 }
             }
         });
 
-        (stop_flag, thread)
+        (stop_sender, thread)
     }
 
     fn start_poll_fallback_if_needed(
@@ -101,13 +104,13 @@ impl MarkdownFileWatchService {
         native_watcher_started: bool,
         watched_file: PathBuf,
         on_changed: Arc<dyn Fn(String) + Send + Sync>,
-    ) -> (Arc<AtomicBool>, Option<JoinHandle<()>>) {
+    ) -> (Option<Sender<()>>, Option<JoinHandle<()>>) {
         if native_watcher_started {
-            return (Arc::new(AtomicBool::new(false)), None);
+            return (None, None);
         }
 
-        let (stop_flag, poll_thread) = self.start_poll_fallback(watched_file, on_changed);
-        (stop_flag, Some(poll_thread))
+        let (stop_sender, poll_thread) = self.start_poll_fallback(watched_file, on_changed);
+        (Some(stop_sender), Some(poll_thread))
     }
 }
 
@@ -136,7 +139,7 @@ impl MarkdownWatchService for MarkdownFileWatchService {
 
         let watcher =
             self.try_start_native_watcher(&watched_file, &watched_dir, Arc::clone(&on_changed));
-        let (stop_flag, poll_thread) =
+        let (poll_stop_sender, poll_thread) =
             self.start_poll_fallback_if_needed(watcher.is_some(), watched_file.clone(), on_changed);
 
         let mut slot = self
@@ -151,7 +154,7 @@ impl MarkdownWatchService for MarkdownFileWatchService {
             _watched_file: watched_file,
             _watched_dir: watched_dir,
             _watcher: watcher,
-            stop_flag,
+            poll_stop_sender,
             poll_thread,
         });
 
@@ -159,12 +162,17 @@ impl MarkdownWatchService for MarkdownFileWatchService {
     }
 
     fn stop(&self) {
-        if let Ok(mut slot) = self.active_watcher.lock() {
-            if let Some(mut active) = slot.take() {
-                active.stop_flag.store(true, Ordering::Relaxed);
-                if let Some(handle) = active.poll_thread.take() {
-                    let _ = handle.join();
-                }
+        let active = match self.active_watcher.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(_) => None,
+        };
+
+        if let Some(mut active) = active {
+            if let Some(stop_sender) = active.poll_stop_sender.take() {
+                let _ = stop_sender.send(());
+            }
+            if let Some(handle) = active.poll_thread.take() {
+                let _ = handle.join();
             }
         }
     }
@@ -359,10 +367,10 @@ mod tests {
         let service = MarkdownFileWatchService::new();
         let callback: Arc<dyn Fn(String) + Send + Sync> = Arc::new(|_| {});
 
-        let (stop_flag, poll_thread) =
+        let (stop_sender, poll_thread) =
             service.start_poll_fallback_if_needed(true, PathBuf::from("/tmp/unused.md"), callback);
 
-        assert!(!stop_flag.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(stop_sender.is_none());
         assert!(poll_thread.is_none());
     }
 
@@ -373,11 +381,14 @@ mod tests {
         fs::write(&temp_file, "initial").expect("temp markdown should be writable");
         let callback: Arc<dyn Fn(String) + Send + Sync> = Arc::new(|_| {});
 
-        let (stop_flag, poll_thread) =
+        let (stop_sender, poll_thread) =
             service.start_poll_fallback_if_needed(false, temp_file.clone(), callback);
+        assert!(stop_sender.is_some());
         assert!(poll_thread.is_some());
 
-        stop_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(sender) = stop_sender {
+            let _ = sender.send(());
+        }
         if let Some(thread) = poll_thread {
             let _ = thread.join();
         }
