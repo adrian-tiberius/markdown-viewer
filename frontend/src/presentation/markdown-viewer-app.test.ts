@@ -483,6 +483,40 @@ class DeferredLoadGateway extends FakeGateway {
   }
 }
 
+class RenderRaceGateway extends FakeGateway {
+  private loadCount = 0;
+
+  override async loadMarkdownFile(
+    path: string,
+    preferences: RenderPreferences
+  ): Promise<MarkdownDocument> {
+    this.loadCalls.push({ path, preferences });
+    this.loadCount += 1;
+
+    if (this.loadCount === 1) {
+      return {
+        path: '/tmp/old/doc.md',
+        title: 'Old Spec',
+        source: '# Old Spec',
+        html: Array.from({ length: 120 }, (_, index) => `<p>Old line ${index}</p>`).join(''),
+        toc: [],
+        wordCount: 120,
+        readingTimeMinutes: 1,
+      };
+    }
+
+    return {
+      path: '/tmp/new/doc.md',
+      title: 'New Spec',
+      source: '# New Spec',
+      html: '<p><a href="child.md">Child</a></p>',
+      toc: [],
+      wordCount: 2,
+      readingTimeMinutes: 1,
+    };
+  }
+}
+
 class DelayedRegistrationGateway extends FakeGateway {
   fileUpdatedUnlistenCalls = 0;
   dragDropUnlistenCalls = 0;
@@ -706,6 +740,27 @@ describe('MarkdownViewerApp', () => {
     });
 
     await context.app.dispose();
+  });
+
+  it('preserves persisted tab workspace session across dispose', async () => {
+    const tabSessionStore = new MemoryTabSessionStore();
+    const context = setupApp({ tabSessionStore });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    expect(context.tabSessionStore.snapshot()).toEqual({
+      tabPaths: ['/tmp/spec.md'],
+      activePath: '/tmp/spec.md',
+    });
+
+    await context.app.dispose();
+
+    expect(context.tabSessionStore.snapshot()).toEqual({
+      tabPaths: ['/tmp/spec.md'],
+      activePath: '/tmp/spec.md',
+    });
   });
 
   it('renders persisted recent documents and opens selected entries', async () => {
@@ -1048,6 +1103,71 @@ describe('MarkdownViewerApp', () => {
     expect(context.ui.subtitle.textContent).toBe('Ready');
 
     await context.app.dispose();
+  });
+
+  it('keeps link resolution bound to the latest document after interleaved renders', async () => {
+    const queuedFrames: FrameRequestCallback[] = [];
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback: FrameRequestCallback): number => {
+        queuedFrames.push(callback);
+        return queuedFrames.length;
+      });
+
+    const gateway = new RenderRaceGateway();
+    const settingsStore = new MemorySettingsStore({
+      ...DEFAULT_SETTINGS,
+      performanceMode: true,
+    });
+    const context = setupApp({
+      gateway,
+      settingsStore,
+    });
+
+    const flushQueuedFrames = async (): Promise<void> => {
+      let processed = 0;
+      while (queuedFrames.length > 0) {
+        const frame = queuedFrames.shift();
+        if (!frame) {
+          break;
+        }
+        frame(performance.now());
+        await flushMicrotasks();
+        processed += 1;
+        if (processed > 400) {
+          throw new Error('requestAnimationFrame queue did not settle');
+        }
+      }
+    };
+
+    try {
+      await flushMicrotasks();
+
+      context.ui.openButton.click();
+      await flushMicrotasks();
+
+      context.gateway.pickResult = '/tmp/other.md';
+      context.ui.openButton.click();
+      await flushMicrotasks();
+
+      await flushQueuedFrames();
+      await vi.waitFor(() => {
+        expect(context.gateway.loadCalls).toHaveLength(2);
+      });
+
+      const link = findLinkByLabel(context.ui.markdownContent, 'Child');
+      expect(link).toBeTruthy();
+      link!.click();
+      await allowPermission(context.ui);
+
+      await vi.waitFor(() => {
+        expect(context.gateway.loadCalls).toHaveLength(3);
+      });
+      expect(context.gateway.loadCalls[2]?.path).toBe('/tmp/new/child.md');
+    } finally {
+      requestAnimationFrameSpy.mockRestore();
+      await context.app.dispose();
+    }
   });
 
   it('cleans up listeners that register after dispose', async () => {

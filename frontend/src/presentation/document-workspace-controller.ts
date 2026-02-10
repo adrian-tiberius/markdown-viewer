@@ -57,7 +57,7 @@ export class DocumentWorkspaceController {
 
     await this.deps.markdownWatch.stopMarkdownWatch();
     runtime.state.clearCurrentDocument();
-    runtime.sessionController.clearTabs();
+    runtime.sessionController.resetTabsForDispose();
     runtime.renderController.renderEmptyState();
   }
 

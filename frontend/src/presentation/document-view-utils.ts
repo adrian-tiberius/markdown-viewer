@@ -1,3 +1,9 @@
+export {
+  baseDirectoryFileUrl,
+  filePathToFileUrl,
+  withoutFragment,
+} from '../application/path-utils';
+
 export interface TocNode {
   id: string;
   text: string;
@@ -13,29 +19,6 @@ interface TocEntryLike {
 
 export function hasUriScheme(value: string): boolean {
   return /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value);
-}
-
-export function withoutFragment(url: string): string {
-  const hashIndex = url.indexOf('#');
-  return hashIndex === -1 ? url : url.slice(0, hashIndex);
-}
-
-export function baseDirectoryFileUrl(path: string): string {
-  const normalized = path.replaceAll('\\', '/');
-  const slashIndex = normalized.lastIndexOf('/');
-  const directory = slashIndex === -1 ? normalized : normalized.slice(0, slashIndex + 1);
-  return filePathToFileUrl(directory);
-}
-
-export function filePathToFileUrl(path: string): string {
-  const normalized = path.replaceAll('\\', '/');
-  if (/^[a-zA-Z]:\//.test(normalized)) {
-    return `file:///${encodeURI(normalized)}`;
-  }
-  if (normalized.startsWith('/')) {
-    return `file://${encodeURI(normalized)}`;
-  }
-  return `file://${encodeURI(normalized)}`;
 }
 
 export function escapeHtml(value: string): string {

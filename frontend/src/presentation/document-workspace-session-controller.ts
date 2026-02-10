@@ -54,6 +54,11 @@ export class DocumentWorkspaceSessionController {
     this.renderTabs();
   }
 
+  resetTabsForDispose(): void {
+    this.service.resetRuntimeTabs();
+    this.renderTabs();
+  }
+
   openTab(path: string, options: { activate: boolean }): void {
     this.service.openTab(path, options);
     this.renderTabs();

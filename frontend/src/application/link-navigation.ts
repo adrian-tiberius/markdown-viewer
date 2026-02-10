@@ -1,4 +1,9 @@
-import { isMarkdownPath } from './path-utils';
+import {
+  baseDirectoryFileUrl,
+  filePathToFileUrl,
+  isMarkdownPath,
+  withoutFragment,
+} from './path-utils';
 
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 
@@ -54,29 +59,6 @@ export function resolveDocumentLinkIntent(input: {
 export function isLinkedFileOutsideScopeError(message: string): boolean {
   const normalized = message.toLowerCase();
   return normalized.includes('outside allowed directory');
-}
-
-export function filePathToFileUrl(path: string): string {
-  const normalized = path.replaceAll('\\', '/');
-  if (/^[a-zA-Z]:\//.test(normalized)) {
-    return `file:///${encodeURI(normalized)}`;
-  }
-  if (normalized.startsWith('/')) {
-    return `file://${encodeURI(normalized)}`;
-  }
-  return `file://${encodeURI(normalized)}`;
-}
-
-export function baseDirectoryFileUrl(path: string): string {
-  const normalized = path.replaceAll('\\', '/');
-  const slashIndex = normalized.lastIndexOf('/');
-  const directory = slashIndex === -1 ? normalized : normalized.slice(0, slashIndex + 1);
-  return filePathToFileUrl(directory);
-}
-
-export function withoutFragment(url: string): string {
-  const hashIndex = url.indexOf('#');
-  return hashIndex === -1 ? url : url.slice(0, hashIndex);
 }
 
 function decodeUriComponent(value: string): string {

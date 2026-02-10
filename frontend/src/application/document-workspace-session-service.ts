@@ -58,6 +58,10 @@ export class DocumentWorkspaceSessionService {
     this.persistTabSession();
   }
 
+  resetRuntimeTabs(): void {
+    this.tabState = createEmptyDocumentTabState();
+  }
+
   openTab(path: string, options: { activate: boolean }): void {
     this.tabState = openDocumentTab(this.tabState, path, {
       activate: options.activate,
