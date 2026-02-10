@@ -4,6 +4,10 @@ import type { DocumentLinkController } from './document-link-controller';
 import { errorToMessage } from './error-utils';
 import { FindController } from './find-controller';
 import type { MarkdownFormattingEngine } from '../application/ports';
+import {
+  CHUNKED_HTML_RENDER_SIZE,
+  shouldChunkHtmlRender,
+} from '../application/render-performance-budget';
 import { TocController } from './toc-controller';
 import type { ViewerUi } from './ui';
 
@@ -127,7 +131,12 @@ export class DocumentRenderController {
     staging.innerHTML = html;
     const nodes = Array.from(staging.childNodes);
 
-    const chunkSize = settings.performanceMode || html.length > 180_000 ? 24 : nodes.length;
+    const chunkSize = shouldChunkHtmlRender({
+      performanceMode: settings.performanceMode,
+      htmlLength: html.length,
+    })
+      ? CHUNKED_HTML_RENDER_SIZE
+      : nodes.length;
     for (let index = 0; index < nodes.length; index += chunkSize) {
       if (!this.isRenderActive(renderToken)) {
         return false;

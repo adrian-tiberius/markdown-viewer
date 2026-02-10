@@ -14,6 +14,7 @@ Versioning for release tags.
 - Single-instance markdown open handoff via launch argument event + startup path consumption command.
 - Linux desktop smoke script added and wired into CI for every push/PR run.
 - Diagnostics report export command added for troubleshooting and support workflows.
+- Render chunking thresholds were extracted into tested application-level performance budget policies.
 
 ### Changed
 

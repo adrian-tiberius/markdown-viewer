@@ -73,6 +73,7 @@ Enforced by: `src-tauri/tests/clean_architecture_boundaries.rs`.
 
 - Unit tests live beside source files for each layer.
 - Architecture tests are mandatory quality gates.
+- Render chunking budget policies are defined in `frontend/src/application/render-performance-budget.ts` and must stay covered by tests.
 - Run both stacks together before changes are finalized:
 
 ```bash
