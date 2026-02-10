@@ -16,6 +16,7 @@ rfd = "0.17.2"
 serde = { version = "1.0.228", features = ["derive"] }
 tauri = { version = "2.10.2", features = [] }
 tauri-plugin-log = "2.7.1"
+tauri-plugin-opener = "2.5.3"
 thiserror = "2.0.18"
 url = "2.5.8"
 
@@ -47,6 +48,7 @@ rfd.workspace = true
 markdown_viewer_application = { path = "crates/application" }
 markdown_viewer_infrastructure = { path = "crates/infrastructure" }
 markdown_viewer_presentation = { path = "crates/presentation" }
+tauri-plugin-opener.workspace = true
 
 [dev-dependencies]
 serde_json = "1.0.149"

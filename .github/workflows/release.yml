@@ -16,13 +16,10 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: linux-bundles
-            artifact_path: src-tauri/target/release/bundle/**
           - os: windows-latest
             artifact_name: windows-bundles
-            artifact_path: src-tauri/target/release/bundle/**
           - os: macos-latest
             artifact_name: macos-bundles
-            artifact_path: src-tauri/target/release/bundle/**
 
     runs-on: ${{ matrix.os }}
 
@@ -141,7 +138,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_path }}
+          path: |
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.rpm
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.zip
+            src-tauri/target/release/bundle/**/*.sig
           if-no-files-found: error
 
   publish:
@@ -154,22 +159,47 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Package platform artifacts
+      - name: Collect release files
         run: |
           set -euo pipefail
           mkdir -p release-files
-          for dir in release-artifacts/*; do
-            if [ -d "$dir" ]; then
-              name="$(basename "$dir")"
-              tar -czf "release-files/${name}.tar.gz" -C release-artifacts "$name"
+
+          find release-artifacts -type f -print0 | while IFS= read -r -d '' file; do
+            base="$(basename "$file")"
+            if [ -e "release-files/$base" ]; then
+              echo "Duplicate release artifact basename: $base"
+              echo "Conflicting path: $file"
+              exit 1
             fi
+
+            cp "$file" "release-files/$base"
           done
+
+          if [ -z "$(find release-files -maxdepth 1 -type f -print -quit)" ]; then
+            echo "No release distributables collected"
+            exit 1
+          fi
 
       - name: Create SHA256 checksums
         run: |
           set -euo pipefail
           cd release-files
-          find . -maxdepth 1 -type f -name "*.tar.gz" -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          find . -maxdepth 1 -type f ! -name "SHA256SUMS.txt" -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+
+      - name: Remove existing release assets for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_json="$(mktemp)"
+
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" > "$release_json" 2>/dev/null; then
+            jq -r '.assets[].id' "$release_json" | while read -r asset_id; do
+              if [ -n "$asset_id" ]; then
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" >/dev/null
+              fi
+            done
+          fi
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

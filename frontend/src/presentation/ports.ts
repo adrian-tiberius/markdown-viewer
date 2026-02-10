@@ -27,6 +27,15 @@ export interface MarkdownFormattingEngine {
   highlightCodeElement(target: HTMLElement): Promise<void>;
 }
 
+export interface ExternalUrlOpener {
+  openExternalUrl(url: string): Promise<void>;
+  openExternalPath(path: string): Promise<void>;
+}
+
+export interface MarkdownTabOpener {
+  openMarkdownInNewTab(path: string): Promise<void>;
+}
+
 export interface ViewerSettingsStore {
   load(): ViewerSettings;
   save(next: ViewerSettings): void;

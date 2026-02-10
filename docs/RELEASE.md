@@ -112,7 +112,7 @@ What happens next:
 
 - `.github/workflows/release.yml` builds Linux, macOS, and Windows bundles.
 - CI smoke-tests each platform binary.
-- Workflow creates SHA256 checksums.
+- Workflow publishes only end-user distributables (`.AppImage`, `.deb`, `.rpm`, `.dmg`, `.exe`, `.msi`, `.zip`, optional `.sig`) plus `SHA256SUMS.txt`.
 - Workflow publishes a GitHub release marked as `prerelease`.
 
 ## 7. Post-release validation
@@ -123,6 +123,12 @@ After the workflow succeeds:
 2. Confirm `SHA256SUMS.txt` is attached.
 3. Download one artifact per platform and run a basic launch smoke test.
 4. Ensure release notes match `CHANGELOG.md`.
+
+If a tag was re-run and old assets remained on an existing release, cleanup stale files:
+
+```bash
+./scripts/cleanup-release-assets.sh v0.1.0-alpha.1 --apply --yes
+```
 
 ## 8. Optional hardening before broader public beta
 

@@ -7,15 +7,31 @@ import {
   LocalStorageViewerSettingsStore,
 } from './infrastructure/local-storage';
 import { BrowserMarkdownFormattingEngine } from './infrastructure/markdown-formatting-engine';
+import { TauriExternalUrlOpener } from './infrastructure/tauri-external-url-opener';
+import { TauriMarkdownTabOpener } from './infrastructure/tauri-markdown-tab-opener';
 import { TauriMarkdownGateway } from './infrastructure/tauri-markdown-gateway';
 import { appShell, createViewerUi, MarkdownViewerApp, mountShell } from './presentation';
 
 mountShell('#app', appShell());
 
+function initialDocumentPathFromQuery(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const path = params.get('open');
+  if (!path) {
+    return null;
+  }
+
+  const trimmed = path.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 const app = new MarkdownViewerApp({
   ui: createViewerUi(),
   gateway: new TauriMarkdownGateway(),
   formattingEngine: new BrowserMarkdownFormattingEngine(),
+  externalUrlOpener: new TauriExternalUrlOpener(),
+  markdownTabOpener: new TauriMarkdownTabOpener(),
+  initialDocumentPath: initialDocumentPathFromQuery(),
   settingsStore: new LocalStorageViewerSettingsStore(),
   scrollMemoryStore: new LocalStorageScrollMemoryStore(),
 });

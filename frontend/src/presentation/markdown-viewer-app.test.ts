@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fixtureMainMarkdown from '../../../test-fixtures/link-behavior/main.md?raw';
 
 import type {
   DragDropEventPayload,
+  ExternalUrlOpener,
   FileUpdatedEvent,
+  MarkdownTabOpener,
   MarkdownFormattingEngine,
   MarkdownGateway,
   ScrollMemoryStore,
@@ -18,6 +21,51 @@ import {
 import { appShell } from './app-shell';
 import { MarkdownViewerApp } from './markdown-viewer-app';
 import { createViewerUi, mountShell } from './ui';
+
+interface FixtureLink {
+  label: string;
+  href: string;
+}
+
+function extractFixtureLinks(markdown: string): FixtureLink[] {
+  const links: FixtureLink[] = [];
+  const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let match = regex.exec(markdown);
+  while (match) {
+    links.push({
+      label: match[1].trim(),
+      href: match[2].trim(),
+    });
+    match = regex.exec(markdown);
+  }
+  return links;
+}
+
+const FIXTURE_MAIN_FILE_URL = new URL('../../../test-fixtures/link-behavior/main.md', import.meta.url);
+const FIXTURE_MAIN_PATH = normalizeFixturePath(FIXTURE_MAIN_FILE_URL.pathname);
+const FIXTURE_LINKS = extractFixtureLinks(fixtureMainMarkdown);
+
+function normalizeFixturePath(pathname: string): string {
+  const decoded = decodeURIComponent(pathname);
+  return decoded.startsWith('/@fs/') ? decoded.slice('/@fs'.length) : decoded;
+}
+
+function fixtureLink(href: string): FixtureLink {
+  const entry = FIXTURE_LINKS.find((candidate) => candidate.href === href);
+  if (!entry) {
+    throw new Error(`Fixture link not found for href: ${href}`);
+  }
+  return entry;
+}
+
+function fixtureLinkTargetPath(href: string): string {
+  return normalizeFixturePath(new URL(href, FIXTURE_MAIN_FILE_URL).pathname);
+}
+
+function findLinkByLabel(container: HTMLElement, label: string): HTMLAnchorElement | null {
+  const links = Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]'));
+  return links.find((link) => (link.textContent ?? '').trim() === label) ?? null;
+}
 
 class FakeGateway implements MarkdownGateway {
   pickResult: string | null = '/tmp/spec.md';
@@ -135,9 +183,33 @@ class FakeFormattingEngine implements MarkdownFormattingEngine {
   async highlightCodeElement(): Promise<void> {}
 }
 
+class FakeExternalUrlOpener implements ExternalUrlOpener {
+  openUrlCalls: string[] = [];
+  openPathCalls: string[] = [];
+
+  async openExternalUrl(url: string): Promise<void> {
+    this.openUrlCalls.push(url);
+  }
+
+  async openExternalPath(path: string): Promise<void> {
+    this.openPathCalls.push(path);
+  }
+}
+
+class FakeMarkdownTabOpener implements MarkdownTabOpener {
+  openCalls: string[] = [];
+
+  async openMarkdownInNewTab(path: string): Promise<void> {
+    this.openCalls.push(path);
+  }
+}
+
 interface SetupOptions {
   gateway?: FakeGateway;
   formattingEngine?: MarkdownFormattingEngine;
+  externalUrlOpener?: ExternalUrlOpener;
+  markdownTabOpener?: MarkdownTabOpener;
+  initialDocumentPath?: string | null;
   settingsStore?: MemorySettingsStore;
   scrollStore?: MemoryScrollStore;
 }
@@ -149,12 +221,17 @@ function setupApp(options: SetupOptions = {}) {
   const ui = createViewerUi();
   const gateway = options.gateway ?? new FakeGateway();
   const formattingEngine = options.formattingEngine ?? new FakeFormattingEngine();
+  const externalUrlOpener = options.externalUrlOpener ?? new FakeExternalUrlOpener();
+  const markdownTabOpener = options.markdownTabOpener ?? new FakeMarkdownTabOpener();
   const settingsStore = options.settingsStore ?? new MemorySettingsStore();
   const scrollStore = options.scrollStore ?? new MemoryScrollStore();
   const app = new MarkdownViewerApp({
     ui,
     gateway,
     formattingEngine,
+    externalUrlOpener,
+    markdownTabOpener,
+    initialDocumentPath: options.initialDocumentPath,
     settingsStore,
     scrollMemoryStore: scrollStore,
   });
@@ -163,6 +240,8 @@ function setupApp(options: SetupOptions = {}) {
   return {
     app,
     gateway,
+    externalUrlOpener,
+    markdownTabOpener,
     scrollStore,
     ui,
   };
@@ -431,5 +510,246 @@ describe('MarkdownViewerApp', () => {
     await flushMicrotasks();
 
     expect(context.gateway.loadCalls).toHaveLength(0);
+  });
+
+  it('resolves in-document anchors by link text when the fragment is legacy-style', async () => {
+    const legacyAnchorLink = fixtureLink('#html');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<h2><a id="mdv-inline-html" aria-hidden="true"></a>Inline HTML</h2><p><a href="${legacyAnchorLink.href}">${legacyAnchorLink.label}</a></p>`,
+    };
+    const context = setupApp({ gateway });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const heading = context.ui.markdownContent.querySelector<HTMLElement>('h2');
+    expect(heading).toBeTruthy();
+    const scrollIntoViewMock = vi.fn();
+    Object.defineProperty(heading!, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+
+    const link = context.ui.markdownContent.querySelector<HTMLAnchorElement>(
+      `a[href="${legacyAnchorLink.href}"]`
+    );
+    expect(link).toBeTruthy();
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+    await context.app.dispose();
+  });
+
+  it('resolves in-document anchors by id when heading id is on nested anchor elements', async () => {
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: '<h2><a id="mdv-overview" aria-hidden="true"></a>Overview</h2><p><a href="#overview">Jump now</a></p>',
+    };
+    const context = setupApp({ gateway });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const heading = context.ui.markdownContent.querySelector<HTMLElement>('h2');
+    expect(heading).toBeTruthy();
+    const scrollIntoViewMock = vi.fn();
+    Object.defineProperty(heading!, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+
+    const link = context.ui.markdownContent.querySelector<HTMLAnchorElement>('a[href="#overview"]');
+    expect(link).toBeTruthy();
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+    await context.app.dispose();
+  });
+
+  it('resolves legacy shorthand anchors from markdown syntax docs style tables of contents', async () => {
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: [
+        '<ul>',
+        '<li><a href="#overview">Overview</a></li>',
+        '<li><a href="#html">Inline HTML</a></li>',
+        '<li><a href="#p">Paragraphs and Line Breaks</a></li>',
+        '</ul>',
+        '<h2><a id="mdv-overview" aria-hidden="true"></a>Overview</h2>',
+        '<h3><a id="mdv-inline-html" aria-hidden="true"></a>Inline HTML</h3>',
+        '<h3><a id="mdv-paragraphs-and-line-breaks" aria-hidden="true"></a>Paragraphs and Line Breaks</h3>',
+      ].join(''),
+    };
+    const context = setupApp({ gateway });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const heading = Array.from(context.ui.markdownContent.querySelectorAll<HTMLElement>('h3')).find(
+      (candidate) => (candidate.textContent ?? '').trim() === 'Paragraphs and Line Breaks'
+    );
+    expect(heading).toBeTruthy();
+    const scrollIntoViewMock = vi.fn();
+    Object.defineProperty(heading!, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+
+    const link = context.ui.markdownContent.querySelector<HTMLAnchorElement>('a[href="#p"]');
+    expect(link).toBeTruthy();
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+    await context.app.dispose();
+  });
+
+  it('opens external URLs with the external opener instead of navigating the app view', async () => {
+    const externalLink = fixtureLink('https://example.com');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<p><a href="${externalLink.href}">${externalLink.label}</a></p>`,
+    };
+    const externalUrlOpener = new FakeExternalUrlOpener();
+    const context = setupApp({ gateway, externalUrlOpener });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const link = findLinkByLabel(context.ui.markdownContent, externalLink.label);
+    expect(link).toBeTruthy();
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(externalUrlOpener.openUrlCalls).toEqual([new URL(externalLink.href).toString()]);
+    expect(context.gateway.loadCalls).toHaveLength(1);
+
+    await context.app.dispose();
+  });
+
+  it('asks for confirmation and opens markdown file links in a new tab', async () => {
+    const markdownFileLink = fixtureLink('./secondary.md');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<p><a href="${markdownFileLink.href}">${markdownFileLink.label}</a></p>`,
+    };
+    const markdownTabOpener = new FakeMarkdownTabOpener();
+    const context = setupApp({ gateway, markdownTabOpener });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const link = findLinkByLabel(context.ui.markdownContent, markdownFileLink.label);
+    expect(link).toBeTruthy();
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(markdownTabOpener.openCalls).toEqual([fixtureLinkTargetPath(markdownFileLink.href)]);
+
+    confirmSpy.mockRestore();
+    await context.app.dispose();
+  });
+
+  it('asks for confirmation and opens non-markdown file links with system app', async () => {
+    const fileLink = fixtureLink('./assets/sample.txt');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<p><a href="${fileLink.href}">${fileLink.label}</a></p>`,
+    };
+    const externalUrlOpener = new FakeExternalUrlOpener();
+    const context = setupApp({ gateway, externalUrlOpener });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const link = findLinkByLabel(context.ui.markdownContent, fileLink.label);
+    expect(link).toBeTruthy();
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(externalUrlOpener.openPathCalls).toEqual([fixtureLinkTargetPath(fileLink.href)]);
+
+    confirmSpy.mockRestore();
+    await context.app.dispose();
+  });
+
+  it('resolves same-document file-url anchors from fixture links', async () => {
+    const sameDocAnchorLink = fixtureLink('./main.md#html');
+    const legacyAnchorLink = fixtureLink('#html');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<h2><a id="mdv-inline-html" aria-hidden="true"></a>Inline HTML</h2><p><a href="${sameDocAnchorLink.href}">${legacyAnchorLink.label}</a></p>`,
+    };
+    const context = setupApp({ gateway });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const heading = context.ui.markdownContent.querySelector<HTMLElement>('h2');
+    expect(heading).toBeTruthy();
+    const scrollIntoViewMock = vi.fn();
+    Object.defineProperty(heading!, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const link = findLinkByLabel(context.ui.markdownContent, legacyAnchorLink.label);
+    expect(link).toBeTruthy();
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+    await context.app.dispose();
   });
 });

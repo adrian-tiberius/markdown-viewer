@@ -1,4 +1,6 @@
 import type {
+  ExternalUrlOpener,
+  MarkdownTabOpener,
   MarkdownFormattingEngine,
   MarkdownGateway,
   ScrollMemoryStore,
@@ -30,6 +32,9 @@ interface MarkdownViewerAppDeps {
   ui: ViewerUi;
   gateway: MarkdownGateway;
   formattingEngine: MarkdownFormattingEngine;
+  externalUrlOpener: ExternalUrlOpener;
+  markdownTabOpener: MarkdownTabOpener;
+  initialDocumentPath?: string | null;
   settingsStore: ViewerSettingsStore;
   scrollMemoryStore: ScrollMemoryStore;
 }
@@ -80,6 +85,13 @@ export class MarkdownViewerApp {
     this.installGlobalCrashHandlers();
     void this.registerRuntimeListeners(lifecycleToken);
     this.renderEmptyState();
+    const initialDocumentPath = this.deps.initialDocumentPath?.trim();
+    if (initialDocumentPath) {
+      void this.loadDocument(initialDocumentPath, {
+        restartWatch: true,
+        restoreScroll: true,
+      });
+    }
 
     if (!this.cleanupRegistered) {
       this.cleanupRegistered = true;
@@ -483,6 +495,7 @@ export class MarkdownViewerApp {
     const { ui } = this.deps;
     this.linkClickDisposer?.();
     const documentUrl = withoutFragment(filePathToFileUrl(documentPath));
+    const baseUrl = baseDirectoryFileUrl(documentPath);
     const onClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       const anchor = target?.closest('a[href]') as HTMLAnchorElement | null;
@@ -494,10 +507,10 @@ export class MarkdownViewerApp {
       if (!href) {
         return;
       }
+      const anchorLabel = (anchor.textContent ?? '').trim();
 
       if (href.startsWith('#')) {
-        const id = href.slice(1);
-        const heading = ui.markdownContent.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
+        const heading = this.resolveHeadingTarget(href.slice(1), anchorLabel);
         if (heading) {
           event.preventDefault();
           heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -505,31 +518,47 @@ export class MarkdownViewerApp {
         return;
       }
 
-      if (!href.startsWith('file://')) {
-        return;
-      }
-
       try {
-        const url = new URL(href);
+        const url = new URL(href, baseUrl);
+        if (url.protocol !== 'file:') {
+          if (this.isSupportedExternalProtocol(url.protocol)) {
+            event.preventDefault();
+            void this.openExternalUrl(url.toString());
+          }
+          return;
+        }
+
         const targetFile = withoutFragment(url.toString());
         if (targetFile === documentUrl && url.hash) {
-          event.preventDefault();
-          const targetId = decodeURIComponent(url.hash.slice(1));
-          const heading = ui.markdownContent.querySelector<HTMLElement>(
-            `#${CSS.escape(targetId)}`
-          );
+          const heading = this.resolveHeadingTarget(url.hash.slice(1), anchorLabel);
           if (heading) {
+            event.preventDefault();
             heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
           return;
         }
 
-        if (isMarkdownPath(url.pathname)) {
+        if (url.protocol === 'file:') {
+          const targetPath = this.fileUrlToPath(url);
+          if (isMarkdownPath(targetPath)) {
+            event.preventDefault();
+            const confirmed = window.confirm(
+              `Open linked markdown file in a new tab?\n\n${targetPath}`
+            );
+            if (confirmed) {
+              void this.openMarkdownInNewTab(targetPath);
+            }
+            return;
+          }
+
           event.preventDefault();
-          void this.loadDocument(url.toString(), {
-            restartWatch: true,
-            restoreScroll: true,
-          });
+          const confirmed = window.confirm(
+            `Open linked file with your default application?\n\n${targetPath}`
+          );
+          if (confirmed) {
+            void this.openExternalPath(targetPath);
+          }
+          return;
         }
       } catch {
         // Keep browser default behavior when URL parsing fails.
@@ -538,6 +567,185 @@ export class MarkdownViewerApp {
 
     ui.markdownContent.addEventListener('click', onClick);
     this.linkClickDisposer = () => ui.markdownContent.removeEventListener('click', onClick);
+  }
+
+  private resolveHeadingTarget(fragment: string, anchorLabel?: string): HTMLElement | null {
+    const decoded = this.decodeUriComponent(fragment).trim();
+    if (!decoded) {
+      return null;
+    }
+
+    for (const candidate of this.headingIdCandidates(decoded)) {
+      const heading = this.findHeadingById(candidate);
+      if (heading) {
+        return heading;
+      }
+    }
+
+    const label = anchorLabel?.trim();
+    if (label) {
+      const heading = this.findHeadingByText(label);
+      if (heading) {
+        return heading;
+      }
+    }
+
+    return null;
+  }
+
+  private findDocumentHeadings(): HTMLElement[] {
+    return Array.from(
+      this.deps.ui.markdownContent.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')
+    );
+  }
+
+  private findHeadingById(id: string): HTMLElement | null {
+    const escapedId = this.escapeCssIdentifier(id);
+    const target = this.deps.ui.markdownContent.querySelector<HTMLElement>(`#${escapedId}`);
+    if (!target) {
+      return null;
+    }
+    return this.resolveOwningHeading(target);
+  }
+
+  private resolveOwningHeading(element: HTMLElement): HTMLElement | null {
+    if (this.isHeadingElement(element)) {
+      return element;
+    }
+
+    const heading = element.closest<HTMLElement>('h1, h2, h3, h4, h5, h6');
+    if (heading && this.deps.ui.markdownContent.contains(heading)) {
+      return heading;
+    }
+
+    return null;
+  }
+
+  private isHeadingElement(element: Element): element is HTMLHeadingElement {
+    return /^h[1-6]$/i.test(element.tagName);
+  }
+
+  private escapeCssIdentifier(value: string): string {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+      return CSS.escape(value);
+    }
+
+    return value.replace(/[\u0000-\u001f\u007f]|^-?\d|^-$|[^a-zA-Z0-9_-]/g, (char) => {
+      if (char === '\0') {
+        return '\uFFFD';
+      }
+      return `\\${char}`;
+    });
+  }
+
+  private findHeadingByText(text: string): HTMLElement | null {
+    const target = this.normalizeHeadingText(text);
+    if (!target) {
+      return null;
+    }
+
+    const headings = this.findDocumentHeadings();
+    for (const heading of headings) {
+      const headingText = this.normalizeHeadingText(heading.textContent ?? '');
+      if (headingText === target) {
+        return heading;
+      }
+    }
+
+    return null;
+  }
+
+  private headingIdCandidates(fragment: string): string[] {
+    const candidates = new Set<string>();
+    const addCandidate = (id: string) => {
+      const normalized = id.trim();
+      if (!normalized) {
+        return;
+      }
+
+      candidates.add(normalized);
+      if (normalized.startsWith('mdv-')) {
+        candidates.add(normalized.slice(4));
+      } else {
+        candidates.add(`mdv-${normalized}`);
+      }
+    };
+
+    addCandidate(fragment);
+    addCandidate(fragment.toLowerCase());
+
+    const slug = this.slugifyFragment(fragment);
+    if (slug) {
+      addCandidate(slug);
+    }
+
+    return Array.from(candidates);
+  }
+
+  private slugifyFragment(fragment: string): string {
+    return fragment
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9 _-]+/g, '')
+      .replace(/[\s_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+
+  private decodeUriComponent(value: string): string {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  private fileUrlToPath(url: URL): string {
+    const decodedPath = this.decodeUriComponent(url.pathname);
+    if (/^\/[a-zA-Z]:\//.test(decodedPath)) {
+      return decodedPath.slice(1);
+    }
+
+    return decodedPath;
+  }
+
+  private normalizeHeadingText(value: string): string {
+    return value
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private isSupportedExternalProtocol(protocol: string): boolean {
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(protocol.toLowerCase());
+  }
+
+  private async openExternalUrl(url: string): Promise<void> {
+    try {
+      await this.deps.externalUrlOpener.openExternalUrl(url);
+    } catch (error) {
+      this.showErrorBanner(`Unable to open external link: ${this.errorToMessage(error)}`);
+    }
+  }
+
+  private async openExternalPath(path: string): Promise<void> {
+    try {
+      await this.deps.externalUrlOpener.openExternalPath(path);
+    } catch (error) {
+      this.showErrorBanner(`Unable to open linked file: ${this.errorToMessage(error)}`);
+    }
+  }
+
+  private async openMarkdownInNewTab(path: string): Promise<void> {
+    try {
+      await this.deps.markdownTabOpener.openMarkdownInNewTab(path);
+    } catch (error) {
+      this.showErrorBanner(`Unable to open linked markdown file: ${this.errorToMessage(error)}`);
+    }
   }
 
   private async applyMathEnhancement(): Promise<void> {

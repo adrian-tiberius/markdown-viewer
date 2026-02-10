@@ -122,6 +122,7 @@ pub fn run() {
         Arc::new(WatchMarkdownFileUseCase::new(watch_service));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
