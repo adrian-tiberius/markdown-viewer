@@ -95,7 +95,7 @@ cargo tauri build
 Prepare release notes in `CHANGELOG.md`:
 
 - Keep `Unreleased` at top.
-- Add/update the version section (example: `0.1.0-alpha.1`) with date.
+- Add/update the version section (example: `0.1.0-alpha.<n>`) with date.
 - Include known limitations for prerelease transparency.
 
 ### Updater signing + GitHub Releases feed secrets (required)
@@ -125,8 +125,8 @@ From a clean `main` checkout:
 
 ```bash
 git pull --ff-only
-git tag -a v0.1.0-alpha.1 -m "v0.1.0-alpha.1"
-git push origin v0.1.0-alpha.1
+git tag -a v<version> -m "v<version>"
+git push origin v<version>
 ```
 
 What happens next:
@@ -153,7 +153,7 @@ After the workflow succeeds:
 If a tag was re-run and old assets remained on an existing release, cleanup stale files:
 
 ```bash
-./scripts/cleanup-release-assets.sh v0.1.0-alpha.1 --apply --yes
+./scripts/cleanup-release-assets.sh v<version> --apply --yes
 ```
 
 ## 8. Optional hardening before broader public beta

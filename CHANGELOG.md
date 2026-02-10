@@ -9,23 +9,91 @@ Versioning for release tags.
 
 ### Added
 
-- In-app update check command wired through Tauri updater plugin (foundation for release update channels).
+- Frontend Playwright E2E harness and local runner scripts were added.
+- Deterministic `?runtime=e2e` runtime adapters were added for reproducible browser test flows.
+- Critical user workflow E2E coverage was added (document lifecycle, link permissions, workspace updates).
+- CI now runs Playwright E2E tests across Linux, macOS, and Windows.
+
+### Changed
+
+- Viewer UI binder internals were split into smaller methods for lower coupling and easier maintenance.
+- App version metadata was aligned to `0.1.0-alpha.4` across desktop/frontend manifests.
+
+### Fixed
+
+- Preserved UNC host components in file-link resolution for Windows network paths.
+- Watcher fallback shutdown flow is now non-blocking.
+
+## [0.1.0-alpha.4] - 2026-02-10
+
+### Added
+
+- In-app update check command wired through the Tauri updater plugin (foundation for release update channels).
 - Workspace quick-open commands in the command palette using open tabs and recent documents.
 - Single-instance markdown open handoff via launch argument event + startup path consumption command.
 - Linux desktop smoke script added and wired into CI for every push/PR run.
 - Diagnostics report export command added for troubleshooting and support workflows.
-- Render chunking thresholds were extracted into tested application-level performance budget policies.
-- Release workflow now publishes updater `latest.json` to GitHub Releases and signs updater artifacts via Tauri updater keys.
 
 ### Changed
 
 - Default desktop capability now includes updater permissions.
+- Render chunking thresholds were extracted into tested application-level performance budget policies.
+- Release workflow now publishes updater `latest.json` to GitHub Releases and signs updater artifacts via Tauri updater keys.
 - Known limitation wording updated to reflect updater channel/signing setup still pending.
-- Unsupported external link protocols are now explicitly blocked with user-visible feedback.
 
 ### Fixed
 
-- No changes yet.
+- Unsupported external link protocols are now explicitly blocked with user-visible feedback.
+
+### Known Limitations
+
+- Automatic updater channel/signing configuration is not finalized yet.
+- Release signing/notarization is not configured by default.
+
+## [0.1.0-alpha.3] - 2026-02-10
+
+### Added
+
+- Workspace productivity workflows, including find navigation, recent-document
+  tracking, keyboard shortcuts, and command palette integration.
+- Persisted workspace session UX for restoring active document context.
+- Journey regression coverage for core viewer flows.
+
+### Changed
+
+- Viewer architecture was restructured into clearer controllers/use-cases to
+  better enforce Clean Architecture boundaries across frontend and Rust
+  workspaces.
+- Development and architecture docs were updated to reflect the new boundaries
+  and runtime composition.
+
+### Fixed
+
+- Workspace persistence behavior was hardened to reduce session consistency
+  issues.
+- Document render consistency was improved for path/link edge cases.
+
+## [0.1.0-alpha.2] - 2026-02-10
+
+### Added
+
+- In-window markdown tabs and tab switching workflow.
+- Linked-file access restrictions with custom permission dialogs.
+- Collapsible sidebars and dynamic measure width controls.
+- Release asset cleanup script for removing stale GitHub release artifacts after
+  tag reruns.
+
+### Changed
+
+- Viewer flows were aligned with Clean Architecture boundaries in application,
+  infrastructure, and presentation layers.
+- Release workflow handling and runbook guidance were tightened for release
+  asset hygiene.
+
+### Fixed
+
+- Link navigation behavior was hardened across local fixture edge cases,
+  including nested paths and spaced filenames.
 
 ## [0.1.0-alpha.1] - 2026-02-09
 
@@ -48,5 +116,8 @@ Versioning for release tags.
 - Automatic updates are not configured.
 - Code-signing and notarization are not configured.
 
-[Unreleased]: https://github.com/adrian-tiberius/markdown-viewer/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/adrian-tiberius/markdown-viewer/compare/v0.1.0-alpha.4...HEAD
+[0.1.0-alpha.4]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.4
+[0.1.0-alpha.3]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.3
+[0.1.0-alpha.2]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.1
