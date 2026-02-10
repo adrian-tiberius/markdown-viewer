@@ -5,6 +5,7 @@ import type {
   MarkdownGateway,
   RecentDocumentsStore,
   ScrollMemoryStore,
+  UpdateService,
   ViewerLayoutStateStore,
   ViewerSettingsStore,
 } from '../application/ports';
@@ -16,6 +17,7 @@ interface MarkdownViewerAppDeps {
   gateway: MarkdownGateway;
   formattingEngine: MarkdownFormattingEngine;
   externalUrlOpener: ExternalUrlOpener;
+  updateService: UpdateService;
   initialDocumentPath?: string | null;
   settingsStore: ViewerSettingsStore;
   layoutStateStore: ViewerLayoutStateStore;
@@ -41,6 +43,7 @@ export class MarkdownViewerApp {
       gateway: this.deps.gateway,
       formattingEngine: this.deps.formattingEngine,
       externalUrlOpener: this.deps.externalUrlOpener,
+      updateService: this.deps.updateService,
       settingsStore: this.deps.settingsStore,
       layoutStateStore: this.deps.layoutStateStore,
       scrollMemoryStore: this.deps.scrollMemoryStore,

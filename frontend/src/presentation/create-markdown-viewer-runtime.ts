@@ -15,6 +15,7 @@ import type {
   MarkdownGateway,
   RecentDocumentsStore,
   ScrollMemoryStore,
+  UpdateService,
   ViewerLayoutStateStore,
   ViewerSettingsStore,
 } from '../application/ports';
@@ -29,6 +30,7 @@ interface CreateMarkdownViewerRuntimeDeps {
   gateway: MarkdownGateway;
   formattingEngine: MarkdownFormattingEngine;
   externalUrlOpener: ExternalUrlOpener;
+  updateService: UpdateService;
   settingsStore: ViewerSettingsStore;
   layoutStateStore: ViewerLayoutStateStore;
   scrollMemoryStore: ScrollMemoryStore;
@@ -201,12 +203,14 @@ export function createMarkdownViewerRuntime(
     dismissPermissionDialog: () => {
       permissionDialogController.resolve(false);
     },
+    showMessage: deps.onErrorBanner,
     actions: {
       openFile: () => workspaceController.openPickedFile(),
       reloadDocument: () => workspaceController.reloadCurrentDocument(),
       printDocument: () => {
         window.print();
       },
+      checkForUpdates: () => deps.updateService.checkForUpdates(),
       closeActiveTab: () => workspaceController.closeActiveTab(),
       activateAdjacentTab: (direction: 'next' | 'previous') =>
         workspaceController.activateAdjacentTab(direction),

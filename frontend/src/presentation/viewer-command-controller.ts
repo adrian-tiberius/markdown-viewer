@@ -1,6 +1,7 @@
 import { resolveKeyboardShortcutIntent } from './keyboard-shortcuts';
 import type { ViewerAction } from './viewer-actions';
 import { CommandPaletteController } from './command-palette-controller';
+import type { UpdateCheckResult } from '../application/ports';
 import type { FindController } from './find-controller';
 import type { ViewerUi } from './ui';
 
@@ -10,10 +11,12 @@ interface ViewerCommandControllerDeps {
   findController: FindController;
   isPermissionDialogVisible: () => boolean;
   dismissPermissionDialog: () => void;
+  showMessage: (message: string) => void;
   actions: {
     openFile: () => Promise<void>;
     reloadDocument: () => Promise<void>;
     printDocument: () => void;
+    checkForUpdates: () => Promise<UpdateCheckResult>;
     closeActiveTab: () => Promise<void>;
     activateAdjacentTab: (direction: 'next' | 'previous') => Promise<void>;
     toggleSidebar: (side: 'left' | 'right') => void;
@@ -269,6 +272,12 @@ export class ViewerCommandController {
       return;
     }
 
+    if (action === 'check-for-updates') {
+      const outcome = await this.deps.actions.checkForUpdates();
+      this.showUpdateOutcome(outcome);
+      return;
+    }
+
     if (action === 'open-find') {
       this.showFindBar({ selectExistingText: true });
       return;
@@ -311,5 +320,21 @@ export class ViewerCommandController {
     if (action === 'show-shortcuts-help') {
       this.showShortcutsDialog();
     }
+  }
+
+  private showUpdateOutcome(outcome: UpdateCheckResult): void {
+    if (outcome.status === 'up-to-date') {
+      this.deps.showMessage('You are already on the latest version.');
+      return;
+    }
+
+    if (outcome.status === 'update-installed') {
+      this.deps.showMessage(
+        `Update ${outcome.version} installed. Restart the app to finish applying it.`
+      );
+      return;
+    }
+
+    this.deps.showMessage(`Update check unavailable: ${outcome.reason}`);
   }
 }

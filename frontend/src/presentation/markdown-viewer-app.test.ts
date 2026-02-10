@@ -12,6 +12,7 @@ import type {
   MarkdownGateway,
   RecentDocumentsStore,
   ScrollMemoryStore,
+  UpdateService,
   ViewerLayoutStateStore,
   ViewerSettingsStore,
 } from '../application/ports';
@@ -368,10 +369,17 @@ class FakeExternalUrlOpener implements ExternalUrlOpener {
   }
 }
 
+class FakeUpdaterService implements UpdateService {
+  async checkForUpdates() {
+    return { status: 'up-to-date' } as const;
+  }
+}
+
 interface SetupOptions {
   gateway?: FakeGateway;
   formattingEngine?: MarkdownFormattingEngine;
   externalUrlOpener?: ExternalUrlOpener;
+  updateService?: UpdateService;
   initialDocumentPath?: string | null;
   settingsStore?: MemorySettingsStore;
   layoutStore?: MemoryLayoutStateStore;
@@ -388,6 +396,7 @@ function setupApp(options: SetupOptions = {}) {
   const gateway = options.gateway ?? new FakeGateway();
   const formattingEngine = options.formattingEngine ?? new FakeFormattingEngine();
   const externalUrlOpener = options.externalUrlOpener ?? new FakeExternalUrlOpener();
+  const updateService = options.updateService ?? new FakeUpdaterService();
   const settingsStore = options.settingsStore ?? new MemorySettingsStore();
   const layoutStore = options.layoutStore ?? new MemoryLayoutStateStore();
   const scrollStore = options.scrollStore ?? new MemoryScrollStore();
@@ -398,6 +407,7 @@ function setupApp(options: SetupOptions = {}) {
     gateway,
     formattingEngine,
     externalUrlOpener,
+    updateService,
     initialDocumentPath: options.initialDocumentPath,
     settingsStore,
     layoutStateStore: layoutStore,

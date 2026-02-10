@@ -31,6 +31,13 @@ export const DEFAULT_COMMAND_PALETTE_COMMANDS: CommandPaletteCommand[] = [
     searchTerms: ['print', 'pdf', 'export'],
   },
   {
+    action: 'check-for-updates',
+    title: 'Check For Updates',
+    description: 'Check for newer versions and install updates.',
+    shortcut: '',
+    searchTerms: ['update', 'upgrade', 'version'],
+  },
+  {
     action: 'open-find',
     title: 'Find In Document',
     description: 'Search and navigate text matches in the current file',

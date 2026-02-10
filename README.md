@@ -147,6 +147,6 @@ Frontend communicates with Rust through Tauri commands/events. Full contract det
 
 ## Known Alpha Limitations
 
-- No automatic updater is configured yet.
+- Automatic updater channel/signing configuration is not finalized yet.
 - Release signing/notarization is not configured by default.
 - Private vulnerability reporting must be enabled on the hosting platform.

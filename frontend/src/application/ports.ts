@@ -50,6 +50,15 @@ export interface ExternalUrlOpener {
   openExternalPath(path: string, sourceDocumentPath: string): Promise<void>;
 }
 
+export type UpdateCheckResult =
+  | { status: 'up-to-date' }
+  | { status: 'update-installed'; version: string }
+  | { status: 'unavailable'; reason: string };
+
+export interface UpdateService {
+  checkForUpdates(): Promise<UpdateCheckResult>;
+}
+
 export interface ViewerSettingsStore {
   load(): ViewerSettings;
   save(next: ViewerSettings): void;

@@ -9,11 +9,12 @@ Versioning for release tags.
 
 ### Added
 
-- No changes yet.
+- In-app update check command wired through Tauri updater plugin (foundation for release update channels).
 
 ### Changed
 
-- No changes yet.
+- Default desktop capability now includes updater permissions.
+- Known limitation wording updated to reflect updater channel/signing setup still pending.
 
 ### Fixed
 
