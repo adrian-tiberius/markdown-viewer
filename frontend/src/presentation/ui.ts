@@ -29,6 +29,12 @@ export interface ViewerUi {
   recoverButton: HTMLButtonElement;
   dismissErrorButton: HTMLButtonElement;
   dropOverlay: HTMLElement;
+  permissionDialog: HTMLElement;
+  permissionTitle: HTMLElement;
+  permissionMessage: HTMLElement;
+  permissionTarget: HTMLElement;
+  permissionAllowButton: HTMLButtonElement;
+  permissionCancelButton: HTMLButtonElement;
 }
 
 export function mountShell(containerSelector: string, shellHtml: string): void {
@@ -68,6 +74,12 @@ export function createViewerUi(): ViewerUi {
     recoverButton: mustGet<HTMLButtonElement>('#recover-view'),
     dismissErrorButton: mustGet<HTMLButtonElement>('#dismiss-error'),
     dropOverlay: mustGet<HTMLElement>('#drop-overlay'),
+    permissionDialog: mustGet<HTMLElement>('#permission-dialog'),
+    permissionTitle: mustGet<HTMLElement>('#permission-title'),
+    permissionMessage: mustGet<HTMLElement>('#permission-message'),
+    permissionTarget: mustGet<HTMLElement>('#permission-target'),
+    permissionAllowButton: mustGet<HTMLButtonElement>('#permission-allow'),
+    permissionCancelButton: mustGet<HTMLButtonElement>('#permission-cancel'),
   };
 }
 

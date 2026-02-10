@@ -29,7 +29,7 @@ export interface MarkdownFormattingEngine {
 
 export interface ExternalUrlOpener {
   openExternalUrl(url: string): Promise<void>;
-  openExternalPath(path: string): Promise<void>;
+  openExternalPath(path: string, sourceDocumentPath: string): Promise<void>;
 }
 
 export interface ViewerSettingsStore {

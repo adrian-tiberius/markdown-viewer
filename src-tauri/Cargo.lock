@@ -83,6 +83,7 @@ dependencies = [
  "markdown_viewer_application",
  "markdown_viewer_infrastructure",
  "markdown_viewer_presentation",
+ "open",
  "regex",
  "rfd",
  "serde",

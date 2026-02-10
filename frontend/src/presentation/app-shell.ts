@@ -121,6 +121,18 @@ export function appShell(): string {
           </fieldset>
         </aside>
       </div>
+
+      <section id="permission-dialog" class="permission-dialog" role="presentation" aria-hidden="true">
+        <div class="permission-card" role="dialog" aria-modal="true" aria-labelledby="permission-title">
+          <h2 id="permission-title">Permission Required</h2>
+          <p id="permission-message"></p>
+          <p id="permission-target" class="permission-target"></p>
+          <div class="actions">
+            <button id="permission-cancel" class="btn ghost">Cancel</button>
+            <button id="permission-allow" class="btn primary">Allow</button>
+          </div>
+        </div>
+      </section>
     </div>
   `;
 }

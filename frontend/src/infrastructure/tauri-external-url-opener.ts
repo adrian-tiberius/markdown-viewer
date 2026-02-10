@@ -1,4 +1,5 @@
-import { openPath, openUrl } from '@tauri-apps/plugin-opener';
+import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 
 import type { ExternalUrlOpener } from '../presentation/ports';
 
@@ -7,7 +8,10 @@ export class TauriExternalUrlOpener implements ExternalUrlOpener {
     await openUrl(url);
   }
 
-  async openExternalPath(path: string): Promise<void> {
-    await openPath(path);
+  async openExternalPath(path: string, sourceDocumentPath: string): Promise<void> {
+    await invoke('open_linked_file', {
+      path,
+      sourceDocumentPath,
+    });
   }
 }

@@ -82,6 +82,11 @@ function findTabCloseButtonByPath(container: HTMLElement, path: string): HTMLBut
   return buttons.find((button) => button.dataset.path === encoded) ?? null;
 }
 
+async function allowPermission(ui: ReturnType<typeof createViewerUi>): Promise<void> {
+  ui.permissionAllowButton.click();
+  await flushMicrotasks();
+}
+
 class FakeGateway implements MarkdownGateway {
   pickResult: string | null = '/tmp/spec.md';
   nextDocument: MarkdownDocument = {
@@ -200,14 +205,14 @@ class FakeFormattingEngine implements MarkdownFormattingEngine {
 
 class FakeExternalUrlOpener implements ExternalUrlOpener {
   openUrlCalls: string[] = [];
-  openPathCalls: string[] = [];
+  openPathCalls: Array<{ path: string; sourceDocumentPath: string }> = [];
 
   async openExternalUrl(url: string): Promise<void> {
     this.openUrlCalls.push(url);
   }
 
-  async openExternalPath(path: string): Promise<void> {
-    this.openPathCalls.push(path);
+  async openExternalPath(path: string, sourceDocumentPath: string): Promise<void> {
+    this.openPathCalls.push({ path, sourceDocumentPath });
   }
 }
 
@@ -685,7 +690,7 @@ describe('MarkdownViewerApp', () => {
     await context.app.dispose();
   });
 
-  it('opens external URLs with the external opener instead of navigating the app view', async () => {
+  it('asks permission before opening external URLs with the external opener', async () => {
     const externalLink = fixtureLink('https://example.com');
     const gateway = new FakeGateway();
     gateway.pickResult = FIXTURE_MAIN_PATH;
@@ -707,6 +712,10 @@ describe('MarkdownViewerApp', () => {
     link!.dispatchEvent(clickEvent);
 
     expect(clickEvent.defaultPrevented).toBe(true);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(true);
+    expect(context.ui.permissionTarget.textContent).toBe(new URL(externalLink.href).toString());
+    expect(externalUrlOpener.openUrlCalls).toEqual([]);
+    await allowPermission(context.ui);
     expect(externalUrlOpener.openUrlCalls).toEqual([new URL(externalLink.href).toString()]);
     expect(context.gateway.loadCalls).toHaveLength(1);
 
@@ -728,7 +737,6 @@ describe('MarkdownViewerApp', () => {
     context.ui.openButton.click();
     await flushMicrotasks();
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const link = findLinkByLabel(context.ui.markdownContent, markdownFileLink.label);
     expect(link).toBeTruthy();
 
@@ -737,13 +745,16 @@ describe('MarkdownViewerApp', () => {
     await flushMicrotasks();
 
     expect(clickEvent.defaultPrevented).toBe(true);
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(true);
+    expect(context.ui.permissionTarget.textContent).toBe(
+      fixtureLinkTargetPath(markdownFileLink.href)
+    );
+    await allowPermission(context.ui);
     expect(context.gateway.loadCalls).toHaveLength(2);
     expect(context.gateway.loadCalls[1]?.path).toBe(fixtureLinkTargetPath(markdownFileLink.href));
     expect(context.ui.path.textContent).toBe(fixtureLinkTargetPath(markdownFileLink.href));
     expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(2);
 
-    confirmSpy.mockRestore();
     await context.app.dispose();
   });
 
@@ -763,18 +774,54 @@ describe('MarkdownViewerApp', () => {
     context.ui.openButton.click();
     await flushMicrotasks();
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const link = findLinkByLabel(context.ui.markdownContent, fileLink.label);
+    expect(link).toBeTruthy();
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+    await flushMicrotasks();
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(true);
+    expect(context.ui.permissionTarget.textContent).toBe(fixtureLinkTargetPath(fileLink.href));
+    await allowPermission(context.ui);
+    expect(externalUrlOpener.openPathCalls).toEqual([
+      {
+        path: fixtureLinkTargetPath(fileLink.href),
+        sourceDocumentPath: FIXTURE_MAIN_PATH,
+      },
+    ]);
+
+    await context.app.dispose();
+  });
+
+  it('blocks non-markdown links that point outside the current document directory tree', async () => {
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: '<p><a href="../outside.txt">Outside file</a></p>',
+    };
+    const externalUrlOpener = new FakeExternalUrlOpener();
+    const context = setupApp({ gateway, externalUrlOpener });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const link = findLinkByLabel(context.ui.markdownContent, 'Outside file');
     expect(link).toBeTruthy();
 
     const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
     link!.dispatchEvent(clickEvent);
 
     expect(clickEvent.defaultPrevented).toBe(true);
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(externalUrlOpener.openPathCalls).toEqual([fixtureLinkTargetPath(fileLink.href)]);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(false);
+    expect(externalUrlOpener.openPathCalls).toEqual([]);
+    expect(context.ui.errorBanner.classList.contains('visible')).toBe(true);
+    expect(context.ui.errorText.textContent).toContain('same folder or a subfolder');
 
-    confirmSpy.mockRestore();
     await context.app.dispose();
   });
 
@@ -802,7 +849,6 @@ describe('MarkdownViewerApp', () => {
       value: scrollIntoViewMock,
     });
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const link = findLinkByLabel(context.ui.markdownContent, legacyAnchorLink.label);
     expect(link).toBeTruthy();
 
@@ -811,9 +857,43 @@ describe('MarkdownViewerApp', () => {
 
     expect(clickEvent.defaultPrevented).toBe(true);
     expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(false);
+    await context.app.dispose();
+  });
 
-    confirmSpy.mockRestore();
+  it('resolves same-document file-url anchors using alias links in the document', async () => {
+    const sameDocAnchorLink = fixtureLink('./main.md#html');
+    const legacyAnchorLink = fixtureLink('#html');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<h2><a id="mdv-inline-html" aria-hidden="true"></a>Inline HTML</h2><p><a href="${legacyAnchorLink.href}">${legacyAnchorLink.label}</a></p><p><a href="${sameDocAnchorLink.href}">${sameDocAnchorLink.label}</a></p>`,
+    };
+    const context = setupApp({ gateway });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const heading = context.ui.markdownContent.querySelector<HTMLElement>('h2');
+    expect(heading).toBeTruthy();
+    const scrollIntoViewMock = vi.fn();
+    Object.defineProperty(heading!, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+
+    const link = findLinkByLabel(context.ui.markdownContent, sameDocAnchorLink.label);
+    expect(link).toBeTruthy();
+
+    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(clickEvent);
+
+    expect(clickEvent.defaultPrevented).toBe(true);
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(false);
     await context.app.dispose();
   });
 });

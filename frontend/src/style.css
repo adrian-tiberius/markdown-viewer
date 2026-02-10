@@ -653,6 +653,61 @@ select {
   opacity: 1;
 }
 
+.permission-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: none;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--bg-primary) 44%, rgba(10, 12, 16, 0.46));
+  backdrop-filter: blur(4px);
+}
+
+.permission-dialog.visible {
+  display: grid;
+}
+
+.permission-card {
+  width: min(34rem, 96vw);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg-elevated) 97%, transparent);
+  box-shadow: var(--shadow);
+  padding: 1rem 1.05rem;
+}
+
+.permission-card h2 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+.permission-card p {
+  margin: 0.62rem 0 0;
+  color: var(--fg-secondary);
+  font-size: 0.9rem;
+}
+
+.permission-target {
+  font-family: var(--mono-font);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--fg-primary);
+  background: color-mix(in srgb, var(--bg-panel) 72%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.52rem 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+.permission-card .actions {
+  margin-top: 0.9rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
 .performance-mode .markdown-body {
   animation: none;
 }

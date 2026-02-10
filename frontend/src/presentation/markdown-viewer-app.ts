@@ -62,6 +62,7 @@ export class MarkdownViewerApp {
   private codeObserver: IntersectionObserver | null = null;
   private linkClickDisposer: (() => void) | null = null;
   private tocParentMap = new Map<string, string | null>();
+  private permissionResolver: ((allowed: boolean) => void) | null = null;
   private scrollSaveTimer: number | null = null;
   private cleanupRegistered = false;
   private beforeUnloadHandler: ((event: BeforeUnloadEvent) => void) | null = null;
@@ -131,6 +132,7 @@ export class MarkdownViewerApp {
     this.cleanupObservers();
     this.linkClickDisposer?.();
     this.linkClickDisposer = null;
+    this.resolvePermissionRequest(false);
 
     if (this.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
@@ -256,6 +258,28 @@ export class MarkdownViewerApp {
 
     this.bindUiListener(ui.printButton, 'click', () => {
       window.print();
+    });
+
+    this.bindUiListener(ui.permissionAllowButton, 'click', () => {
+      this.resolvePermissionRequest(true);
+    });
+
+    this.bindUiListener(ui.permissionCancelButton, 'click', () => {
+      this.resolvePermissionRequest(false);
+    });
+
+    this.bindUiListener(ui.permissionDialog, 'click', (event) => {
+      if (event.target === ui.permissionDialog) {
+        this.resolvePermissionRequest(false);
+      }
+    });
+
+    this.bindUiListener(window, 'keydown', (event: Event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === 'Escape' && this.isPermissionDialogVisible()) {
+        keyboardEvent.preventDefault();
+        this.resolvePermissionRequest(false);
+      }
     });
 
     this.bindUiListener(ui.perfToggle, 'change', () => {
@@ -703,7 +727,7 @@ export class MarkdownViewerApp {
         if (url.protocol !== 'file:') {
           if (this.isSupportedExternalProtocol(url.protocol)) {
             event.preventDefault();
-            void this.openExternalUrl(url.toString());
+            void this.requestExternalUrlPermission(url.toString());
           }
           return;
         }
@@ -722,22 +746,18 @@ export class MarkdownViewerApp {
           const targetPath = this.fileUrlToPath(url);
           if (isMarkdownPath(targetPath)) {
             event.preventDefault();
-            const confirmed = window.confirm(
-              `Open linked markdown file in a new tab?\n\n${targetPath}`
-            );
-            if (confirmed) {
-              void this.openMarkdownInNewTab(targetPath);
-            }
+            void this.requestMarkdownLinkPermission(targetPath);
             return;
           }
 
           event.preventDefault();
-          const confirmed = window.confirm(
-            `Open linked file with your default application?\n\n${targetPath}`
-          );
-          if (confirmed) {
-            void this.openExternalPath(targetPath);
+          if (!this.isAllowedLinkedFilePath(documentPath, targetPath)) {
+            this.showErrorBanner(
+              'Linked file can only be opened when it is in the same folder or a subfolder of the current markdown document.'
+            );
+            return;
           }
+          void this.requestLocalFilePermission(targetPath, documentPath);
           return;
         }
       } catch {
@@ -765,6 +785,38 @@ export class MarkdownViewerApp {
     const label = anchorLabel?.trim();
     if (label) {
       const heading = this.findHeadingByText(label);
+      if (heading) {
+        return heading;
+      }
+    }
+
+    const headingFromAliasLink = this.findHeadingByAliasLinkText(decoded);
+    if (headingFromAliasLink) {
+      return headingFromAliasLink;
+    }
+
+    return null;
+  }
+
+  private findHeadingByAliasLinkText(fragment: string): HTMLElement | null {
+    const normalizedFragment = fragment.trim().toLowerCase();
+    if (!normalizedFragment) {
+      return null;
+    }
+
+    const links = this.deps.ui.markdownContent.querySelectorAll<HTMLAnchorElement>('a[href]');
+    for (const link of links) {
+      const href = link.getAttribute('href');
+      if (!href || !href.startsWith('#')) {
+        continue;
+      }
+
+      const candidateFragment = this.decodeUriComponent(href.slice(1)).trim().toLowerCase();
+      if (candidateFragment !== normalizedFragment) {
+        continue;
+      }
+
+      const heading = this.findHeadingByText((link.textContent ?? '').trim());
       if (heading) {
         return heading;
       }
@@ -890,6 +942,54 @@ export class MarkdownViewerApp {
     return decodedPath;
   }
 
+  private isAllowedLinkedFilePath(sourceDocumentPath: string, targetPath: string): boolean {
+    const sourceDirectory = this.directoryPath(sourceDocumentPath);
+    if (!sourceDirectory) {
+      return false;
+    }
+
+    return this.isPathWithinDirectory(targetPath, sourceDirectory);
+  }
+
+  private directoryPath(path: string): string {
+    const normalized = path.replace(/\\/g, '/');
+    const trimmed = normalized.replace(/\/+$/, '');
+    const separatorIndex = trimmed.lastIndexOf('/');
+    if (separatorIndex < 0) {
+      return '';
+    }
+    if (separatorIndex === 0) {
+      return '/';
+    }
+    return trimmed.slice(0, separatorIndex);
+  }
+
+  private isPathWithinDirectory(path: string, directoryPath: string): boolean {
+    const candidate = this.normalizeFileSystemPath(path);
+    const directory = this.normalizeFileSystemPath(directoryPath);
+    if (!candidate || !directory) {
+      return false;
+    }
+    if (candidate === directory) {
+      return true;
+    }
+
+    const directoryPrefix = directory.endsWith('/') ? directory : `${directory}/`;
+    return candidate.startsWith(directoryPrefix);
+  }
+
+  private normalizeFileSystemPath(path: string): string {
+    const normalized = path.trim().replace(/\\/g, '/');
+    if (!normalized) {
+      return '';
+    }
+
+    if (/^[a-zA-Z]:\//.test(normalized)) {
+      return normalized.toLowerCase();
+    }
+    return normalized;
+  }
+
   private normalizeHeadingText(value: string): string {
     return value
       .toLowerCase()
@@ -912,12 +1012,54 @@ export class MarkdownViewerApp {
     }
   }
 
-  private async openExternalPath(path: string): Promise<void> {
+  private async requestExternalUrlPermission(url: string): Promise<void> {
+    const allow = await this.requestPermission({
+      title: 'Open External Link',
+      message: 'This will open your browser or default external handler.',
+      target: url,
+      allowLabel: 'Open Link',
+    });
+    if (!allow || this.disposed) {
+      return;
+    }
+    await this.openExternalUrl(url);
+  }
+
+  private async openExternalPath(path: string, sourceDocumentPath: string): Promise<void> {
     try {
-      await this.deps.externalUrlOpener.openExternalPath(path);
+      await this.deps.externalUrlOpener.openExternalPath(path, sourceDocumentPath);
     } catch (error) {
       this.showErrorBanner(`Unable to open linked file: ${this.errorToMessage(error)}`);
     }
+  }
+
+  private async requestMarkdownLinkPermission(path: string): Promise<void> {
+    const allow = await this.requestPermission({
+      title: 'Open Linked Markdown',
+      message: 'Open this linked markdown document in a new tab in this window?',
+      target: path,
+      allowLabel: 'Open Tab',
+    });
+    if (!allow || this.disposed) {
+      return;
+    }
+    await this.openMarkdownInNewTab(path);
+  }
+
+  private async requestLocalFilePermission(
+    path: string,
+    sourceDocumentPath: string
+  ): Promise<void> {
+    const allow = await this.requestPermission({
+      title: 'Open Linked File',
+      message: 'Open this file with your system default application?',
+      target: path,
+      allowLabel: 'Open File',
+    });
+    if (!allow || this.disposed) {
+      return;
+    }
+    await this.openExternalPath(path, sourceDocumentPath);
   }
 
   private async openMarkdownInNewTab(path: string): Promise<void> {
@@ -930,6 +1072,48 @@ export class MarkdownViewerApp {
     } catch (error) {
       this.showErrorBanner(`Unable to open linked markdown file: ${this.errorToMessage(error)}`);
     }
+  }
+
+  private async requestPermission(options: {
+    title: string;
+    message: string;
+    target: string;
+    allowLabel?: string;
+  }): Promise<boolean> {
+    if (this.permissionResolver) {
+      this.resolvePermissionRequest(false);
+    }
+
+    const { ui } = this.deps;
+    ui.permissionTitle.textContent = options.title;
+    ui.permissionMessage.textContent = options.message;
+    ui.permissionTarget.textContent = options.target;
+    ui.permissionAllowButton.textContent = options.allowLabel ?? 'Allow';
+    ui.permissionDialog.classList.add('visible');
+    ui.permissionDialog.setAttribute('aria-hidden', 'false');
+
+    return new Promise<boolean>((resolve) => {
+      this.permissionResolver = resolve;
+      ui.permissionAllowButton.focus();
+    });
+  }
+
+  private resolvePermissionRequest(allowed: boolean): void {
+    const resolver = this.permissionResolver;
+    if (!resolver) {
+      return;
+    }
+    this.permissionResolver = null;
+
+    const { ui } = this.deps;
+    ui.permissionDialog.classList.remove('visible');
+    ui.permissionDialog.setAttribute('aria-hidden', 'true');
+    ui.permissionAllowButton.textContent = 'Allow';
+    resolver(allowed);
+  }
+
+  private isPermissionDialogVisible(): boolean {
+    return this.deps.ui.permissionDialog.classList.contains('visible');
   }
 
   private async applyMathEnhancement(): Promise<void> {
