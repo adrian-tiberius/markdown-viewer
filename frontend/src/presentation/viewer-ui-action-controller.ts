@@ -26,6 +26,27 @@ export class ViewerUiActionController {
 
   handlers(): ViewerUiBindingHandlers {
     return {
+      ...this.fileAndTabHandlers(),
+      ...this.runtimeAndDialogHandlers(),
+      ...this.preferenceHandlers(),
+      ...this.findHandlers(),
+      ...this.commandPaletteHandlers(),
+      ...this.errorAndScrollHandlers(),
+    };
+  }
+
+  private fileAndTabHandlers(): Pick<
+    ViewerUiBindingHandlers,
+    | 'onOpen'
+    | 'onReload'
+    | 'onToggleLeftSidebar'
+    | 'onToggleRightSidebar'
+    | 'onTabAction'
+    | 'onPrint'
+    | 'onClearRecentDocuments'
+    | 'onOpenRecentDocument'
+  > {
+    return {
       onOpen: () => {
         void this.deps.commandController.executeAction('open-file');
       },
@@ -49,6 +70,28 @@ export class ViewerUiActionController {
       onPrint: () => {
         void this.deps.commandController.executeAction('print-document');
       },
+      onClearRecentDocuments: () => {
+        this.deps.workspaceController.clearRecentDocuments();
+      },
+      onOpenRecentDocument: (encodedPath: string) => {
+        const path = this.decodeUriComponent(encodedPath);
+        void this.deps.workspaceController.openRecentDocument(path);
+      },
+    };
+  }
+
+  private runtimeAndDialogHandlers(): Pick<
+    ViewerUiBindingHandlers,
+    | 'onOpenCommandPalette'
+    | 'onPermissionResolve'
+    | 'onGlobalKeyDown'
+    | 'onWindowResize'
+    | 'onWorkspaceTransitionEnd'
+    | 'onShowShortcutsHelp'
+    | 'onShortcutsClose'
+    | 'onShortcutsDismiss'
+  > {
+    return {
       onOpenCommandPalette: () => {
         this.deps.commandController.showCommandPalette();
       },
@@ -64,6 +107,35 @@ export class ViewerUiActionController {
       onWorkspaceTransitionEnd: (event: TransitionEvent) => {
         this.deps.preferencesController.handleWorkspaceTransitionEnd(event);
       },
+      onShowShortcutsHelp: () => {
+        void this.deps.commandController.executeAction('show-shortcuts-help');
+      },
+      onShortcutsClose: () => {
+        this.deps.commandController.closeShortcutsDialog();
+      },
+      onShortcutsDismiss: () => {
+        this.deps.commandController.dismissShortcutsDialog();
+      },
+    };
+  }
+
+  private preferenceHandlers(): Pick<
+    ViewerUiBindingHandlers,
+    | 'onPerformanceModeChange'
+    | 'onSafeModeChange'
+    | 'onThemeChange'
+    | 'onFontScaleChange'
+    | 'onLineHeightChange'
+    | 'onMeasureWidthChange'
+    | 'onIncludeLinksChange'
+    | 'onIncludeCodeChange'
+    | 'onIncludeFrontMatterChange'
+    | 'onTocAutoExpandChange'
+    | 'onCollapseAllToc'
+    | 'onExpandAllToc'
+    | 'onClearScrollMemory'
+  > {
+    return {
       onPerformanceModeChange: (enabled: boolean) => {
         this.deps.preferencesController.setPerformanceMode(enabled);
         void this.deps.workspaceController.reloadCurrentDocument();
@@ -116,6 +188,14 @@ export class ViewerUiActionController {
       onClearScrollMemory: () => {
         this.deps.scrollMemoryStore.clear();
       },
+    };
+  }
+
+  private findHandlers(): Pick<
+    ViewerUiBindingHandlers,
+    'onFindInput' | 'onFindInputKeyDown' | 'onFindStep' | 'onFindClose'
+  > {
+    return {
       onFindInput: (value: string) => {
         this.deps.commandController.handleFindInput(value);
       },
@@ -128,13 +208,14 @@ export class ViewerUiActionController {
       onFindClose: () => {
         this.deps.commandController.handleFindClose();
       },
-      onClearRecentDocuments: () => {
-        this.deps.workspaceController.clearRecentDocuments();
-      },
-      onOpenRecentDocument: (encodedPath: string) => {
-        const path = this.decodeUriComponent(encodedPath);
-        void this.deps.workspaceController.openRecentDocument(path);
-      },
+    };
+  }
+
+  private commandPaletteHandlers(): Pick<
+    ViewerUiBindingHandlers,
+    'onCommandPaletteInput' | 'onCommandPaletteAction' | 'onCommandPaletteDismiss'
+  > {
+    return {
       onCommandPaletteInput: (value: string) => {
         this.deps.commandController.handleCommandPaletteInput(value);
       },
@@ -144,15 +225,14 @@ export class ViewerUiActionController {
       onCommandPaletteDismiss: () => {
         this.deps.commandController.dismissCommandPalette();
       },
-      onShowShortcutsHelp: () => {
-        void this.deps.commandController.executeAction('show-shortcuts-help');
-      },
-      onShortcutsClose: () => {
-        this.deps.commandController.closeShortcutsDialog();
-      },
-      onShortcutsDismiss: () => {
-        this.deps.commandController.dismissShortcutsDialog();
-      },
+    };
+  }
+
+  private errorAndScrollHandlers(): Pick<
+    ViewerUiBindingHandlers,
+    'onRecoverFromError' | 'onDismissError' | 'onViewerScroll'
+  > {
+    return {
       onRecoverFromError: () => {
         this.deps.preferencesController.clearSafeModeForRecovery();
         this.deps.ui.errorBanner.classList.remove('visible');

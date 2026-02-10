@@ -61,10 +61,29 @@ export class ViewerUiBinder {
     const { ui, handlers } = this.deps;
     this.dispose();
 
+    this.bindTopBarActions(ui, handlers);
+    this.bindTabActions(ui, handlers);
+    this.bindPermissionDialogActions(ui, handlers);
+    this.bindGlobalEvents(ui, handlers);
+    this.bindPreferenceControls(ui, handlers);
+    this.bindFindControls(ui, handlers);
+    this.bindRecentDocumentControls(ui, handlers);
+    this.bindCommandPaletteControls(ui, handlers);
+    this.bindShortcutsDialogControls(ui, handlers);
+    this.bindErrorBannerControls(ui, handlers);
+    this.bindScrollPersistence(ui, handlers);
+  }
+
+  private bindTopBarActions(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.openButton, 'click', handlers.onOpen);
     this.bindListener(ui.reloadButton, 'click', handlers.onReload);
     this.bindListener(ui.toggleLeftSidebarButton, 'click', handlers.onToggleLeftSidebar);
     this.bindListener(ui.toggleRightSidebarButton, 'click', handlers.onToggleRightSidebar);
+    this.bindListener(ui.printButton, 'click', handlers.onPrint);
+    this.bindListener(ui.openCommandPaletteButton, 'click', handlers.onOpenCommandPalette);
+  }
+
+  private bindTabActions(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.tabList, 'click', (event: Event) => {
       const target = event.target as HTMLElement | null;
       const actionElement = target?.closest<HTMLButtonElement>('button[data-tab-action]');
@@ -79,8 +98,9 @@ export class ViewerUiBinder {
       }
       handlers.onTabAction(action, encodedPath);
     });
-    this.bindListener(ui.printButton, 'click', handlers.onPrint);
-    this.bindListener(ui.openCommandPaletteButton, 'click', handlers.onOpenCommandPalette);
+  }
+
+  private bindPermissionDialogActions(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.permissionAllowButton, 'click', () => {
       handlers.onPermissionResolve(true);
     });
@@ -92,6 +112,9 @@ export class ViewerUiBinder {
         handlers.onPermissionResolve(false);
       }
     });
+  }
+
+  private bindGlobalEvents(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(window, 'keydown', (event: Event) => {
       handlers.onGlobalKeyDown(event as KeyboardEvent);
     });
@@ -99,6 +122,9 @@ export class ViewerUiBinder {
     this.bindListener(ui.workspace, 'transitionend', (event: Event) => {
       handlers.onWorkspaceTransitionEnd(event as TransitionEvent);
     });
+  }
+
+  private bindPreferenceControls(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.perfToggle, 'change', () => {
       handlers.onPerformanceModeChange(ui.perfToggle.checked);
     });
@@ -132,6 +158,9 @@ export class ViewerUiBinder {
     this.bindListener(ui.collapseAllToc, 'click', handlers.onCollapseAllToc);
     this.bindListener(ui.expandAllToc, 'click', handlers.onExpandAllToc);
     this.bindListener(ui.clearScrollMemory, 'click', handlers.onClearScrollMemory);
+  }
+
+  private bindFindControls(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.findInput, 'input', () => {
       handlers.onFindInput(ui.findInput.value);
     });
@@ -145,6 +174,9 @@ export class ViewerUiBinder {
       handlers.onFindStep('next');
     });
     this.bindListener(ui.findClose, 'click', handlers.onFindClose);
+  }
+
+  private bindRecentDocumentControls(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.clearRecentDocuments, 'click', handlers.onClearRecentDocuments);
     this.bindListener(ui.recentDocumentsList, 'click', (event: Event) => {
       const target = event.target as HTMLElement | null;
@@ -159,6 +191,9 @@ export class ViewerUiBinder {
       }
       handlers.onOpenRecentDocument(encodedPath);
     });
+  }
+
+  private bindCommandPaletteControls(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.commandPaletteInput, 'input', () => {
       handlers.onCommandPaletteInput(ui.commandPaletteInput.value);
     });
@@ -195,6 +230,9 @@ export class ViewerUiBinder {
         handlers.onCommandPaletteDismiss();
       }
     });
+  }
+
+  private bindShortcutsDialogControls(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.showShortcutsHelpButton, 'click', handlers.onShowShortcutsHelp);
     this.bindListener(ui.shortcutsCloseButton, 'click', handlers.onShortcutsClose);
     this.bindListener(ui.shortcutsDialog, 'click', (event: Event) => {
@@ -202,8 +240,14 @@ export class ViewerUiBinder {
         handlers.onShortcutsDismiss();
       }
     });
+  }
+
+  private bindErrorBannerControls(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(ui.recoverButton, 'click', handlers.onRecoverFromError);
     this.bindListener(ui.dismissErrorButton, 'click', handlers.onDismissError);
+  }
+
+  private bindScrollPersistence(ui: ViewerUi, handlers: ViewerUiBindingHandlers): void {
     this.bindListener(
       ui.viewerScroll,
       'scroll',
