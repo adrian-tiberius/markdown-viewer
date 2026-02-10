@@ -706,6 +706,114 @@ describe('MarkdownViewerApp', () => {
     await context.app.dispose();
   });
 
+  it('journey: open document, navigate anchor, open linked markdown in tab, switch and close tab', async () => {
+    const markdownFileLink = fixtureLink('./secondary.md');
+    const legacyAnchorLink = fixtureLink('#html');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<h2><a id="mdv-inline-html" aria-hidden="true"></a>Inline HTML</h2><p><a href="${legacyAnchorLink.href}">${legacyAnchorLink.label}</a></p><p><a href="${markdownFileLink.href}">${markdownFileLink.label}</a></p>`,
+    };
+    const context = setupApp({ gateway });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+    expect(context.gateway.loadCalls).toHaveLength(1);
+    expect(context.ui.path.textContent).toBe(FIXTURE_MAIN_PATH);
+
+    const heading = context.ui.markdownContent.querySelector<HTMLElement>('h2');
+    expect(heading).toBeTruthy();
+    const scrollIntoViewMock = vi.fn();
+    Object.defineProperty(heading!, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    });
+
+    const anchorLink = findLinkByLabel(context.ui.markdownContent, legacyAnchorLink.label);
+    expect(anchorLink).toBeTruthy();
+    const anchorClick = new MouseEvent('click', { bubbles: true, cancelable: true });
+    anchorLink!.dispatchEvent(anchorClick);
+    expect(anchorClick.defaultPrevented).toBe(true);
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+
+    const markdownLink = findLinkByLabel(context.ui.markdownContent, markdownFileLink.label);
+    expect(markdownLink).toBeTruthy();
+    const markdownClick = new MouseEvent('click', { bubbles: true, cancelable: true });
+    markdownLink!.dispatchEvent(markdownClick);
+    await flushMicrotasks();
+
+    expect(markdownClick.defaultPrevented).toBe(true);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(true);
+    await allowPermission(context.ui);
+    expect(context.gateway.loadCalls).toHaveLength(2);
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(2);
+
+    const firstTab = findTabButtonByPath(context.ui.tabList, FIXTURE_MAIN_PATH);
+    expect(firstTab).toBeTruthy();
+    firstTab!.click();
+    await flushMicrotasks();
+    expect(context.ui.path.textContent).toBe(FIXTURE_MAIN_PATH);
+
+    const secondClose = findTabCloseButtonByPath(
+      context.ui.tabList,
+      fixtureLinkTargetPath(markdownFileLink.href)
+    );
+    expect(secondClose).toBeTruthy();
+    secondClose!.click();
+    await flushMicrotasks();
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(1);
+
+    await context.app.dispose();
+  });
+
+  it('journey: request external link permission, then collapse sidebars and expand reader width', async () => {
+    const externalLink = fixtureLink('https://example.com');
+    const gateway = new FakeGateway();
+    gateway.pickResult = FIXTURE_MAIN_PATH;
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      path: FIXTURE_MAIN_PATH,
+      html: `<p><a href="${externalLink.href}">${externalLink.label}</a></p>`,
+    };
+    const externalUrlOpener = new FakeExternalUrlOpener();
+    const context = setupApp({ gateway, externalUrlOpener });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const link = findLinkByLabel(context.ui.markdownContent, externalLink.label);
+    expect(link).toBeTruthy();
+    const firstClick = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(firstClick);
+    expect(firstClick.defaultPrevented).toBe(true);
+    expect(context.ui.permissionDialog.classList.contains('visible')).toBe(true);
+    context.ui.permissionCancelButton.click();
+    await flushMicrotasks();
+    expect(externalUrlOpener.openUrlCalls).toEqual([]);
+
+    const secondClick = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link!.dispatchEvent(secondClick);
+    expect(secondClick.defaultPrevented).toBe(true);
+    await allowPermission(context.ui);
+    expect(externalUrlOpener.openUrlCalls).toEqual([new URL(externalLink.href).toString()]);
+
+    context.ui.toggleLeftSidebarButton.click();
+    context.ui.toggleRightSidebarButton.click();
+    expect(context.ui.workspace.classList.contains('left-collapsed')).toBe(true);
+    expect(context.ui.workspace.classList.contains('right-collapsed')).toBe(true);
+
+    const dynamicMax = Number(context.ui.measureWidth.max);
+    context.ui.measureWidth.value = dynamicMax.toString();
+    context.ui.measureWidth.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(document.documentElement.style.getPropertyValue('--reader-measure-width')).toBe('100%');
+
+    await context.app.dispose();
+  });
+
   it('resolves in-document anchors by link text when the fragment is legacy-style', async () => {
     const legacyAnchorLink = fixtureLink('#html');
     const gateway = new FakeGateway();
