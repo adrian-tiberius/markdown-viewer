@@ -154,16 +154,29 @@ jobs:
         with:
           path: release-artifacts
 
+      - name: Package platform artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p release-files
+          for dir in release-artifacts/*; do
+            if [ -d "$dir" ]; then
+              name="$(basename "$dir")"
+              tar -czf "release-files/${name}.tar.gz" -C release-artifacts "$name"
+            fi
+          done
+
       - name: Create SHA256 checksums
         run: |
-          cd release-artifacts
-          find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          set -euo pipefail
+          cd release-files
+          find . -maxdepth 1 -type f -name "*.tar.gz" -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-artifacts/**
+            release-files/*
           generate_release_notes: true
           draft: false
           prerelease: true
+          overwrite_files: true
