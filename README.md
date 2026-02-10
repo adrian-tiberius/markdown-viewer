@@ -117,7 +117,13 @@ pnpm --dir frontend build
 ./scripts/test-all.sh
 ```
 
-CI enforces formatting, linting, tests, and build verification via `.github/workflows/ci.yml`.
+- Frontend E2E suite (Playwright):
+
+```bash
+pnpm --dir frontend e2e
+```
+
+CI enforces formatting, linting, unit/integration tests, cross-platform E2E tests, and build verification via `.github/workflows/ci.yml`.
 
 ## Architecture
 

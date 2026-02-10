@@ -73,6 +73,7 @@ Enforced by: `src-tauri/tests/clean_architecture_boundaries.rs`.
 
 - Unit tests live beside source files for each layer.
 - Architecture tests are mandatory quality gates.
+- Frontend browser E2E coverage lives in `frontend/tests/e2e/*.spec.ts` and runs against the deterministic `?runtime=e2e` harness.
 - Render chunking budget policies are defined in `frontend/src/application/render-performance-budget.ts` and must stay covered by tests.
 - Run both stacks together before changes are finalized:
 
@@ -104,6 +105,18 @@ pnpm --dir frontend lint
 
 ```bash
 pnpm --dir frontend test:watch
+```
+
+- Frontend E2E tests (Playwright):
+
+```bash
+pnpm --dir frontend e2e
+```
+
+- Install Playwright Chromium browser for local E2E runs:
+
+```bash
+pnpm --dir frontend e2e:install
 ```
 
 - Rust tests:
