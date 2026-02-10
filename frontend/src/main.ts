@@ -8,7 +8,6 @@ import {
 } from './infrastructure/local-storage';
 import { BrowserMarkdownFormattingEngine } from './infrastructure/markdown-formatting-engine';
 import { TauriExternalUrlOpener } from './infrastructure/tauri-external-url-opener';
-import { TauriMarkdownTabOpener } from './infrastructure/tauri-markdown-tab-opener';
 import { TauriMarkdownGateway } from './infrastructure/tauri-markdown-gateway';
 import { appShell, createViewerUi, MarkdownViewerApp, mountShell } from './presentation';
 
@@ -30,7 +29,6 @@ const app = new MarkdownViewerApp({
   gateway: new TauriMarkdownGateway(),
   formattingEngine: new BrowserMarkdownFormattingEngine(),
   externalUrlOpener: new TauriExternalUrlOpener(),
-  markdownTabOpener: new TauriMarkdownTabOpener(),
   initialDocumentPath: initialDocumentPathFromQuery(),
   settingsStore: new LocalStorageViewerSettingsStore(),
   scrollMemoryStore: new LocalStorageScrollMemoryStore(),

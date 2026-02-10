@@ -19,6 +19,7 @@ export interface ViewerUi {
   subtitle: HTMLElement;
   stats: HTMLElement;
   path: HTMLElement;
+  tabList: HTMLUListElement;
   tocList: HTMLUListElement;
   markdownContent: HTMLElement;
   safeContent: HTMLPreElement;
@@ -57,6 +58,7 @@ export function createViewerUi(): ViewerUi {
     subtitle: mustGet<HTMLElement>('#doc-subtitle'),
     stats: mustGet<HTMLElement>('#doc-stats'),
     path: mustGet<HTMLElement>('#doc-path'),
+    tabList: mustGet<HTMLUListElement>('#doc-tabs'),
     tocList: mustGet<HTMLUListElement>('#toc-list'),
     markdownContent: mustGet<HTMLElement>('#markdown-content'),
     safeContent: mustGet<HTMLPreElement>('#safe-content'),

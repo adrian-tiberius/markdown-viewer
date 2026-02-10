@@ -34,6 +34,12 @@ export function appShell(): string {
         </aside>
 
         <main class="viewer-column">
+          <nav class="doc-tabs-bar" aria-label="Open documents">
+            <ul id="doc-tabs" class="doc-tabs">
+              <li class="doc-tab-empty">No open tabs</li>
+            </ul>
+          </nav>
+
           <header class="doc-meta">
             <div class="doc-meta-main">
               <h1 id="doc-title"></h1>

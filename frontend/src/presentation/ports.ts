@@ -32,10 +32,6 @@ export interface ExternalUrlOpener {
   openExternalPath(path: string): Promise<void>;
 }
 
-export interface MarkdownTabOpener {
-  openMarkdownInNewTab(path: string): Promise<void>;
-}
-
 export interface ViewerSettingsStore {
   load(): ViewerSettings;
   save(next: ViewerSettings): void;

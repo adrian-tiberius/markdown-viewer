@@ -157,8 +157,84 @@ body {
 .viewer-column {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 0;
+}
+
+.doc-tabs-bar {
+  margin: 0 0 0.42rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-elevated) 95%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.doc-tabs {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  overflow-x: auto;
+}
+
+.doc-tab-item {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-panel) 48%, transparent);
+}
+
+.doc-tab-item.active {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 60%, transparent);
+}
+
+.doc-tab-button,
+.doc-tab-close {
+  border: 0;
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.doc-tab-button {
+  max-width: 18rem;
+  min-width: 0;
+  padding: 0.24rem 0.3rem 0.24rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-tab-close {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  color: var(--fg-secondary);
+}
+
+.doc-tab-button:hover,
+.doc-tab-close:hover {
+  background: color-mix(in srgb, var(--accent-soft) 54%, transparent);
+}
+
+.doc-tab-empty {
+  margin: 0;
+  padding: 0.2rem 0.52rem;
+  color: var(--fg-secondary);
+  font-size: 0.78rem;
 }
 
 .panel-head {
@@ -618,6 +694,10 @@ select {
     gap: 0.25rem;
   }
 
+  .doc-tab-button {
+    max-width: 12.5rem;
+  }
+
   .doc-meta-side {
     text-align: left;
   }
@@ -635,6 +715,7 @@ select {
   }
 
   .topbar,
+  .doc-tabs-bar,
   .panel,
   .doc-meta .path,
   .error-banner {

@@ -1,6 +1,5 @@
 import type {
   ExternalUrlOpener,
-  MarkdownTabOpener,
   MarkdownFormattingEngine,
   MarkdownGateway,
   ScrollMemoryStore,
@@ -33,7 +32,6 @@ interface MarkdownViewerAppDeps {
   gateway: MarkdownGateway;
   formattingEngine: MarkdownFormattingEngine;
   externalUrlOpener: ExternalUrlOpener;
-  markdownTabOpener: MarkdownTabOpener;
   initialDocumentPath?: string | null;
   settingsStore: ViewerSettingsStore;
   scrollMemoryStore: ScrollMemoryStore;
@@ -44,10 +42,17 @@ interface LoadOptions {
   restoreScroll: boolean;
 }
 
+interface DocumentTab {
+  path: string;
+  title: string;
+}
+
 export class MarkdownViewerApp {
   private readonly deps: MarkdownViewerAppDeps;
   private settings: ViewerSettings;
   private currentDocument: MarkdownDocument | null = null;
+  private tabs: DocumentTab[] = [];
+  private activeTabPath: string | null = null;
   private reloadTimer: number | null = null;
   private activeHeadingId = '';
   private currentLoadNonce = 0;
@@ -87,7 +92,8 @@ export class MarkdownViewerApp {
     this.renderEmptyState();
     const initialDocumentPath = this.deps.initialDocumentPath?.trim();
     if (initialDocumentPath) {
-      void this.loadDocument(initialDocumentPath, {
+      void this.openDocumentInTab(initialDocumentPath, {
+        activateTab: true,
         restartWatch: true,
         restoreScroll: true,
       });
@@ -141,6 +147,10 @@ export class MarkdownViewerApp {
     }
 
     await this.deps.gateway.stopMarkdownWatch();
+    this.currentDocument = null;
+    this.activeTabPath = null;
+    this.tabs = [];
+    this.renderEmptyState();
   }
 
   private async registerRuntimeListeners(lifecycleToken: number): Promise<void> {
@@ -181,7 +191,11 @@ export class MarkdownViewerApp {
         this.deps.ui.dropOverlay.classList.remove('visible');
         const path = event.paths.find((candidate) => isMarkdownPath(candidate));
         if (path) {
-          void this.loadDocument(path, { restartWatch: true, restoreScroll: true });
+          void this.openDocumentInTab(path, {
+            activateTab: true,
+            restartWatch: true,
+            restoreScroll: true,
+          });
         }
       });
 
@@ -207,6 +221,37 @@ export class MarkdownViewerApp {
 
     this.bindUiListener(ui.reloadButton, 'click', () => {
       void this.reloadCurrentDocument();
+    });
+
+    this.bindUiListener(ui.tabList, 'click', (event) => {
+      const target = event.target as HTMLElement | null;
+      const actionElement = target?.closest<HTMLButtonElement>('button[data-tab-action]');
+      if (!actionElement) {
+        return;
+      }
+
+      const action = actionElement.dataset.tabAction;
+      const encodedPath = actionElement.dataset.path;
+      if (!action || !encodedPath) {
+        return;
+      }
+
+      const path = this.decodeUriComponent(encodedPath);
+      if (action === 'activate') {
+        if (path === this.currentDocument?.path) {
+          return;
+        }
+        void this.openDocumentInTab(path, {
+          activateTab: true,
+          restartWatch: true,
+          restoreScroll: true,
+        });
+        return;
+      }
+
+      if (action === 'close') {
+        void this.closeTab(path);
+      }
     });
 
     this.bindUiListener(ui.printButton, 'click', () => {
@@ -361,17 +406,142 @@ export class MarkdownViewerApp {
     if (!path) {
       return;
     }
-    await this.loadDocument(path, { restartWatch: true, restoreScroll: true });
+    await this.openDocumentInTab(path, {
+      activateTab: true,
+      restartWatch: true,
+      restoreScroll: true,
+    });
   }
 
   private async reloadCurrentDocument(): Promise<void> {
-    if (!this.currentDocument) {
+    const path = this.currentDocument?.path ?? this.activeTabPath;
+    if (!path) {
       return;
     }
-    await this.loadDocument(this.currentDocument.path, {
+    await this.loadDocument(path, {
       restartWatch: false,
       restoreScroll: true,
     });
+  }
+
+  private async openDocumentInTab(
+    path: string,
+    options: { activateTab: boolean; restartWatch: boolean; restoreScroll: boolean }
+  ): Promise<void> {
+    const normalizedPath = path.trim();
+    if (!normalizedPath) {
+      return;
+    }
+
+    this.persistScroll();
+    this.ensureTab(normalizedPath);
+    if (options.activateTab) {
+      this.activeTabPath = normalizedPath;
+    }
+    this.renderTabs();
+
+    await this.loadDocument(normalizedPath, {
+      restartWatch: options.restartWatch,
+      restoreScroll: options.restoreScroll,
+    });
+  }
+
+  private async closeTab(path: string): Promise<void> {
+    const index = this.tabs.findIndex((tab) => tab.path === path);
+    if (index < 0) {
+      return;
+    }
+
+    const wasActive = this.activeTabPath === path;
+    this.tabs.splice(index, 1);
+
+    if (!wasActive) {
+      this.renderTabs();
+      return;
+    }
+
+    this.persistScroll();
+    if (this.tabs.length === 0) {
+      this.activeTabPath = null;
+      this.currentDocument = null;
+      await this.deps.gateway.stopMarkdownWatch();
+      this.renderEmptyState();
+      return;
+    }
+
+    const nextIndex = Math.min(index, this.tabs.length - 1);
+    const nextTab = this.tabs[nextIndex];
+    this.activeTabPath = nextTab.path;
+    this.renderTabs();
+    await this.loadDocument(nextTab.path, {
+      restartWatch: true,
+      restoreScroll: true,
+    });
+  }
+
+  private ensureTab(path: string): DocumentTab {
+    const existing = this.tabs.find((tab) => tab.path === path);
+    if (existing) {
+      return existing;
+    }
+
+    const tab: DocumentTab = {
+      path,
+      title: this.tabTitleFromPath(path),
+    };
+    this.tabs.push(tab);
+    return tab;
+  }
+
+  private retargetTabPath(requestedPath: string, loadedPath: string): void {
+    if (requestedPath === loadedPath) {
+      return;
+    }
+
+    const requestedIndex = this.tabs.findIndex((tab) => tab.path === requestedPath);
+    if (requestedIndex < 0) {
+      return;
+    }
+
+    const loadedIndex = this.tabs.findIndex((tab) => tab.path === loadedPath);
+    if (loadedIndex >= 0) {
+      this.tabs.splice(requestedIndex, 1);
+    } else {
+      this.tabs[requestedIndex].path = loadedPath;
+    }
+
+    if (this.activeTabPath === requestedPath) {
+      this.activeTabPath = loadedPath;
+    }
+  }
+
+  private tabTitleFromPath(path: string): string {
+    const normalized = path.replace(/\\/g, '/');
+    const segment = normalized.split('/').pop();
+    const title = segment?.trim();
+    return title && title.length > 0 ? title : path;
+  }
+
+  private renderTabs(): void {
+    const { ui } = this.deps;
+    if (this.tabs.length === 0) {
+      ui.tabList.innerHTML = '<li class="doc-tab-empty">No open tabs</li>';
+      ui.reloadButton.disabled = true;
+      return;
+    }
+
+    ui.reloadButton.disabled = false;
+    ui.tabList.innerHTML = this.tabs
+      .map((tab) => {
+        const encodedPath = encodeURIComponent(tab.path);
+        const isActive = tab.path === this.activeTabPath;
+        const activeClass = isActive ? ' active' : '';
+        return `<li class="doc-tab-item${activeClass}">
+    <button type="button" class="doc-tab-button" data-tab-action="activate" data-path="${escapeHtml(encodedPath)}" title="${escapeHtml(tab.path)}">${escapeHtml(tab.title)}</button>
+    <button type="button" class="doc-tab-close" data-tab-action="close" data-path="${escapeHtml(encodedPath)}" aria-label="Close tab" title="Close tab">×</button>
+  </li>`;
+      })
+      .join('');
   }
 
   private async loadDocument(path: string, options: LoadOptions): Promise<void> {
@@ -391,6 +561,12 @@ export class MarkdownViewerApp {
         return;
       }
 
+      this.retargetTabPath(path, documentDto.path);
+      this.activeTabPath = documentDto.path;
+      const tab = this.ensureTab(documentDto.path);
+      tab.title = documentDto.title.trim() || this.tabTitleFromPath(documentDto.path);
+      this.renderTabs();
+
       this.currentDocument = documentDto;
       this.deps.ui.errorBanner.classList.remove('visible');
       await this.renderDocument(documentDto, { restoreScroll: options.restoreScroll });
@@ -399,6 +575,10 @@ export class MarkdownViewerApp {
       }
 
       if (options.restartWatch) {
+        await this.deps.gateway.stopMarkdownWatch();
+        if (nonce !== this.currentLoadNonce || this.disposed) {
+          return;
+        }
         await this.deps.gateway.startMarkdownWatch(documentDto.path);
         if (nonce !== this.currentLoadNonce || this.disposed) {
           return;
@@ -742,7 +922,11 @@ export class MarkdownViewerApp {
 
   private async openMarkdownInNewTab(path: string): Promise<void> {
     try {
-      await this.deps.markdownTabOpener.openMarkdownInNewTab(path);
+      await this.openDocumentInTab(path, {
+        activateTab: true,
+        restartWatch: true,
+        restoreScroll: true,
+      });
     } catch (error) {
       this.showErrorBanner(`Unable to open linked markdown file: ${this.errorToMessage(error)}`);
     }
@@ -835,10 +1019,8 @@ export class MarkdownViewerApp {
 
   private observeActiveHeading(): void {
     const { ui } = this.deps;
-    const headings = Array.from(
-      ui.markdownContent.querySelectorAll<HTMLElement>(
-        'h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'
-      )
+    const headings = this.findDocumentHeadings().filter((heading) =>
+      Boolean(this.resolveObservedHeadingId(heading))
     );
     if (headings.length === 0) {
       return;
@@ -853,12 +1035,13 @@ export class MarkdownViewerApp {
           return;
         }
         const heading = visible[0].target as HTMLElement;
-        if (!heading.id || heading.id === this.activeHeadingId) {
+        const headingId = this.resolveObservedHeadingId(heading);
+        if (!headingId || headingId === this.activeHeadingId) {
           return;
         }
-        this.activeHeadingId = heading.id;
+        this.activeHeadingId = headingId;
         if (this.settings.tocAutoExpand) {
-          this.expandAncestors(heading.id);
+          this.expandAncestors(headingId);
         }
         this.updateActiveTocState();
       },
@@ -872,6 +1055,15 @@ export class MarkdownViewerApp {
     for (const heading of headings) {
       this.headingObserver.observe(heading);
     }
+  }
+
+  private resolveObservedHeadingId(heading: HTMLElement): string | null {
+    if (heading.id) {
+      return heading.id;
+    }
+
+    const nested = heading.querySelector<HTMLElement>('[id]');
+    return nested?.id ?? null;
   }
 
   private renderToc(entries: TocEntry[]): void {
@@ -1037,6 +1229,8 @@ export class MarkdownViewerApp {
     ui.stats.textContent = '0 words • 0 min read';
     ui.path.textContent = 'No file loaded';
     ui.tocList.innerHTML = '<li class="toc-empty">No headings</li>';
+    ui.safeContent.hidden = true;
+    ui.markdownContent.hidden = false;
     ui.markdownContent.innerHTML = `<section class="welcome-card">
     <h2>Markdown Viewer</h2>
     <p>Focused reading UX with clean typography, live refresh, and resilient rendering.</p>
@@ -1046,6 +1240,7 @@ export class MarkdownViewerApp {
       <li>Performance mode lazy-loads heavy formatting on long documents.</li>
     </ul>
   </section>`;
+    this.renderTabs();
   }
 
   private cleanupObservers(): void {

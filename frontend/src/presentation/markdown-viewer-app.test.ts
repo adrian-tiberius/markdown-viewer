@@ -7,7 +7,6 @@ import type {
   DragDropEventPayload,
   ExternalUrlOpener,
   FileUpdatedEvent,
-  MarkdownTabOpener,
   MarkdownFormattingEngine,
   MarkdownGateway,
   ScrollMemoryStore,
@@ -65,6 +64,22 @@ function fixtureLinkTargetPath(href: string): string {
 function findLinkByLabel(container: HTMLElement, label: string): HTMLAnchorElement | null {
   const links = Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]'));
   return links.find((link) => (link.textContent ?? '').trim() === label) ?? null;
+}
+
+function findTabButtonByPath(container: HTMLElement, path: string): HTMLButtonElement | null {
+  const encoded = encodeURIComponent(path);
+  const buttons = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('button[data-tab-action="activate"]')
+  );
+  return buttons.find((button) => button.dataset.path === encoded) ?? null;
+}
+
+function findTabCloseButtonByPath(container: HTMLElement, path: string): HTMLButtonElement | null {
+  const encoded = encodeURIComponent(path);
+  const buttons = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('button[data-tab-action="close"]')
+  );
+  return buttons.find((button) => button.dataset.path === encoded) ?? null;
 }
 
 class FakeGateway implements MarkdownGateway {
@@ -196,19 +211,10 @@ class FakeExternalUrlOpener implements ExternalUrlOpener {
   }
 }
 
-class FakeMarkdownTabOpener implements MarkdownTabOpener {
-  openCalls: string[] = [];
-
-  async openMarkdownInNewTab(path: string): Promise<void> {
-    this.openCalls.push(path);
-  }
-}
-
 interface SetupOptions {
   gateway?: FakeGateway;
   formattingEngine?: MarkdownFormattingEngine;
   externalUrlOpener?: ExternalUrlOpener;
-  markdownTabOpener?: MarkdownTabOpener;
   initialDocumentPath?: string | null;
   settingsStore?: MemorySettingsStore;
   scrollStore?: MemoryScrollStore;
@@ -222,7 +228,6 @@ function setupApp(options: SetupOptions = {}) {
   const gateway = options.gateway ?? new FakeGateway();
   const formattingEngine = options.formattingEngine ?? new FakeFormattingEngine();
   const externalUrlOpener = options.externalUrlOpener ?? new FakeExternalUrlOpener();
-  const markdownTabOpener = options.markdownTabOpener ?? new FakeMarkdownTabOpener();
   const settingsStore = options.settingsStore ?? new MemorySettingsStore();
   const scrollStore = options.scrollStore ?? new MemoryScrollStore();
   const app = new MarkdownViewerApp({
@@ -230,7 +235,6 @@ function setupApp(options: SetupOptions = {}) {
     gateway,
     formattingEngine,
     externalUrlOpener,
-    markdownTabOpener,
     initialDocumentPath: options.initialDocumentPath,
     settingsStore,
     scrollMemoryStore: scrollStore,
@@ -241,7 +245,6 @@ function setupApp(options: SetupOptions = {}) {
     app,
     gateway,
     externalUrlOpener,
-    markdownTabOpener,
     scrollStore,
     ui,
   };
@@ -361,6 +364,64 @@ describe('MarkdownViewerApp', () => {
     expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/spec.md');
     expect(context.ui.title.textContent).toBe('Spec');
     expect(context.ui.path.textContent).toBe('/tmp/spec.md');
+
+    await context.app.dispose();
+  });
+
+  it('opens multiple markdown files as tabs and switches active tab on click', async () => {
+    const context = setupApp();
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    context.gateway.pickResult = '/tmp/notes.md';
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    expect(context.gateway.loadCalls.map((call) => call.path)).toEqual([
+      '/tmp/spec.md',
+      '/tmp/notes.md',
+    ]);
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(2);
+    expect(context.ui.path.textContent).toBe('/tmp/notes.md');
+
+    const firstTabButton = findTabButtonByPath(context.ui.tabList, '/tmp/spec.md');
+    expect(firstTabButton).toBeTruthy();
+    firstTabButton!.click();
+    await flushMicrotasks();
+
+    expect(context.gateway.loadCalls).toHaveLength(3);
+    expect(context.gateway.loadCalls[2]?.path).toBe('/tmp/spec.md');
+    expect(context.ui.path.textContent).toBe('/tmp/spec.md');
+    expect(
+      context.ui.tabList.querySelector<HTMLButtonElement>('.doc-tab-item.active .doc-tab-button')
+        ?.dataset.path
+    ).toBe(encodeURIComponent('/tmp/spec.md'));
+
+    await context.app.dispose();
+  });
+
+  it('closes the active tab and activates a remaining tab', async () => {
+    const context = setupApp();
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    context.gateway.pickResult = '/tmp/notes.md';
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    const closeButton = findTabCloseButtonByPath(context.ui.tabList, '/tmp/notes.md');
+    expect(closeButton).toBeTruthy();
+    closeButton!.click();
+    await flushMicrotasks();
+
+    expect(context.gateway.loadCalls).toHaveLength(3);
+    expect(context.gateway.loadCalls[2]?.path).toBe('/tmp/spec.md');
+    expect(context.ui.path.textContent).toBe('/tmp/spec.md');
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(1);
 
     await context.app.dispose();
   });
@@ -661,8 +722,7 @@ describe('MarkdownViewerApp', () => {
       path: FIXTURE_MAIN_PATH,
       html: `<p><a href="${markdownFileLink.href}">${markdownFileLink.label}</a></p>`,
     };
-    const markdownTabOpener = new FakeMarkdownTabOpener();
-    const context = setupApp({ gateway, markdownTabOpener });
+    const context = setupApp({ gateway });
 
     await flushMicrotasks();
     context.ui.openButton.click();
@@ -674,10 +734,14 @@ describe('MarkdownViewerApp', () => {
 
     const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
     link!.dispatchEvent(clickEvent);
+    await flushMicrotasks();
 
     expect(clickEvent.defaultPrevented).toBe(true);
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(markdownTabOpener.openCalls).toEqual([fixtureLinkTargetPath(markdownFileLink.href)]);
+    expect(context.gateway.loadCalls).toHaveLength(2);
+    expect(context.gateway.loadCalls[1]?.path).toBe(fixtureLinkTargetPath(markdownFileLink.href));
+    expect(context.ui.path.textContent).toBe(fixtureLinkTargetPath(markdownFileLink.href));
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(2);
 
     confirmSpy.mockRestore();
     await context.app.dispose();
