@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  adjacentDocumentTabPath,
   applyLoadedDocumentToTabs,
   closeDocumentTab,
   createEmptyDocumentTabState,
+  mergeDocumentTabSession,
   openDocumentTab,
+  restoreDocumentTabState,
   tabTitleFromPath,
+  toDocumentTabSession,
 } from './document-tabs';
 
 describe('document-tabs', () => {
@@ -80,5 +84,53 @@ describe('document-tabs', () => {
   it('derives titles from path basename', () => {
     expect(tabTitleFromPath('/tmp/docs/readme.md')).toBe('readme.md');
     expect(tabTitleFromPath('C:\\Work\\notes\\daily.md')).toBe('daily.md');
+  });
+
+  it('sanitizes malformed persisted tab sessions', () => {
+    const session = mergeDocumentTabSession({
+      tabPaths: ['/tmp/spec.md', ' ', '/tmp/spec.md', '/tmp/notes.md', 9],
+      activePath: '/tmp/missing.md',
+    });
+
+    expect(session).toEqual({
+      tabPaths: ['/tmp/spec.md', '/tmp/notes.md'],
+      activePath: '/tmp/notes.md',
+    });
+  });
+
+  it('restores tab state from a persisted session', () => {
+    const restored = restoreDocumentTabState({
+      tabPaths: ['/tmp/spec.md', '/tmp/notes.md'],
+      activePath: '/tmp/spec.md',
+    });
+
+    expect(restored.tabs).toEqual([
+      { path: '/tmp/spec.md', title: 'spec.md' },
+      { path: '/tmp/notes.md', title: 'notes.md' },
+    ]);
+    expect(restored.activePath).toBe('/tmp/spec.md');
+  });
+
+  it('serializes tab state into a persisted session shape', () => {
+    const base = createEmptyDocumentTabState();
+    const withSpec = openDocumentTab(base, '/tmp/spec.md', { activate: true });
+    const withNotes = openDocumentTab(withSpec, '/tmp/notes.md', { activate: true });
+
+    const session = toDocumentTabSession(withNotes);
+
+    expect(session).toEqual({
+      tabPaths: ['/tmp/spec.md', '/tmp/notes.md'],
+      activePath: '/tmp/notes.md',
+    });
+  });
+
+  it('returns adjacent tab path with wrap-around semantics', () => {
+    const base = createEmptyDocumentTabState();
+    const withA = openDocumentTab(base, '/tmp/a.md', { activate: true });
+    const withB = openDocumentTab(withA, '/tmp/b.md', { activate: true });
+    const withC = openDocumentTab(withB, '/tmp/c.md', { activate: true });
+
+    expect(adjacentDocumentTabPath(withC, 'next')).toBe('/tmp/a.md');
+    expect(adjacentDocumentTabPath(withC, 'previous')).toBe('/tmp/b.md');
   });
 });

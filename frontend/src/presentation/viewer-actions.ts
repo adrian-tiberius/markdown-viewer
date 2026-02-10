@@ -1,0 +1,14 @@
+export type ViewerAction =
+  | 'open-file'
+  | 'reload-document'
+  | 'print-document'
+  | 'open-find'
+  | 'open-command-palette'
+  | 'show-shortcuts-help'
+  | 'find-next'
+  | 'find-previous'
+  | 'close-active-tab'
+  | 'activate-next-tab'
+  | 'activate-previous-tab'
+  | 'toggle-left-sidebar'
+  | 'toggle-right-sidebar';

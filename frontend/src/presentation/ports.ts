@@ -3,6 +3,8 @@ import type {
   RenderPreferences,
 } from '../domain';
 import type { ViewerSettings } from '../application/settings';
+import type { DocumentTabSession } from '../application/document-tabs';
+import type { RecentDocumentsState } from '../application/recent-documents';
 
 export interface DragDropEventPayload {
   type: 'enter' | 'leave' | 'over' | 'drop';
@@ -51,4 +53,14 @@ export interface ViewerLayoutState {
 export interface ViewerLayoutStateStore {
   load(): ViewerLayoutState;
   save(next: ViewerLayoutState): void;
+}
+
+export interface DocumentTabSessionStore {
+  load(): DocumentTabSession;
+  save(next: DocumentTabSession): void;
+}
+
+export interface RecentDocumentsStore {
+  load(): RecentDocumentsState;
+  save(next: RecentDocumentsState): void;
 }

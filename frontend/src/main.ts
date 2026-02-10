@@ -3,6 +3,8 @@ import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 
 import {
+  LocalStorageDocumentTabSessionStore,
+  LocalStorageRecentDocumentsStore,
   LocalStorageScrollMemoryStore,
   LocalStorageViewerLayoutStateStore,
   LocalStorageViewerSettingsStore,
@@ -34,6 +36,8 @@ const app = new MarkdownViewerApp({
   settingsStore: new LocalStorageViewerSettingsStore(),
   layoutStateStore: new LocalStorageViewerLayoutStateStore(),
   scrollMemoryStore: new LocalStorageScrollMemoryStore(),
+  tabSessionStore: new LocalStorageDocumentTabSessionStore(),
+  recentDocumentsStore: new LocalStorageRecentDocumentsStore(),
 });
 
 app.start();

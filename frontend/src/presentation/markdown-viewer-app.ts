@@ -1,7 +1,9 @@
 import type {
+  DocumentTabSessionStore,
   ExternalUrlOpener,
   MarkdownFormattingEngine,
   MarkdownGateway,
+  RecentDocumentsStore,
   ScrollMemoryStore,
   ViewerLayoutState,
   ViewerLayoutStateStore,
@@ -13,16 +15,29 @@ import {
 } from '../application/use-cases';
 import { isMarkdownPath } from '../application/path-utils';
 import {
+  adjacentDocumentTabPath,
   applyLoadedDocumentToTabs,
   closeDocumentTab,
   createEmptyDocumentTabState,
   openDocumentTab,
+  restoreDocumentTabState,
+  toDocumentTabSession,
   type DocumentTabState,
 } from '../application/document-tabs';
 import {
   isLinkedFileOutsideScopeError,
   resolveDocumentLinkIntent,
 } from '../application/link-navigation';
+import {
+  resolveKeyboardShortcutIntent,
+  type KeyboardShortcutIntent,
+} from './keyboard-shortcuts';
+import {
+  addRecentDocument,
+  createEmptyRecentDocumentsState,
+  type RecentDocumentsState,
+} from '../application/recent-documents';
+import { type ViewerAction } from './viewer-actions';
 import {
   MEASURE_WIDTH_FALLBACK_MAX,
   MEASURE_WIDTH_MIN,
@@ -43,6 +58,8 @@ import {
   hasUriScheme,
   type TocNode,
 } from './document-view-utils';
+import { CommandPaletteController } from './command-palette-controller';
+import { FindController } from './find-controller';
 import type { ViewerUi } from './ui';
 
 interface MarkdownViewerAppDeps {
@@ -54,6 +71,8 @@ interface MarkdownViewerAppDeps {
   settingsStore: ViewerSettingsStore;
   layoutStateStore: ViewerLayoutStateStore;
   scrollMemoryStore: ScrollMemoryStore;
+  tabSessionStore: DocumentTabSessionStore;
+  recentDocumentsStore: RecentDocumentsStore;
 }
 
 interface LoadOptions {
@@ -63,8 +82,11 @@ interface LoadOptions {
 
 export class MarkdownViewerApp {
   private readonly deps: MarkdownViewerAppDeps;
+  private readonly commandPaletteController: CommandPaletteController;
+  private readonly findController: FindController;
   private settings: ViewerSettings;
   private layoutState: ViewerLayoutState;
+  private recentDocuments: RecentDocumentsState;
   private currentDocument: MarkdownDocument | null = null;
   private tabState: DocumentTabState = createEmptyDocumentTabState();
   private reloadTimer: number | null = null;
@@ -91,6 +113,24 @@ export class MarkdownViewerApp {
     this.deps = deps;
     this.settings = this.deps.settingsStore.load();
     this.layoutState = this.deps.layoutStateStore.load();
+    this.recentDocuments = this.deps.recentDocumentsStore.load() ?? createEmptyRecentDocumentsState();
+    this.commandPaletteController = new CommandPaletteController({
+      ui: {
+        commandPalette: this.deps.ui.commandPalette,
+        commandPaletteInput: this.deps.ui.commandPaletteInput,
+        commandPaletteList: this.deps.ui.commandPaletteList,
+      },
+    });
+    this.findController = new FindController({
+      ui: {
+        findBar: this.deps.ui.findBar,
+        findInput: this.deps.ui.findInput,
+        findCount: this.deps.ui.findCount,
+        markdownContent: this.deps.ui.markdownContent,
+        safeContent: this.deps.ui.safeContent,
+      },
+      isSafeMode: () => this.settings.safeMode,
+    });
   }
 
   start(): void {
@@ -108,6 +148,7 @@ export class MarkdownViewerApp {
     this.installGlobalCrashHandlers();
     void this.registerRuntimeListeners(lifecycleToken);
     this.renderEmptyState();
+    this.renderRecentDocuments();
     const initialDocumentPath = this.deps.initialDocumentPath?.trim();
     if (initialDocumentPath) {
       void this.openDocumentInTab(initialDocumentPath, {
@@ -115,6 +156,17 @@ export class MarkdownViewerApp {
         restartWatch: true,
         restoreScroll: true,
       });
+    } else {
+      const restoredTabState = restoreDocumentTabState(this.deps.tabSessionStore.load());
+      if (restoredTabState.tabs.length > 0 && restoredTabState.activePath) {
+        this.tabState = restoredTabState;
+        this.persistTabSession();
+        this.renderTabs();
+        void this.loadDocument(restoredTabState.activePath, {
+          restartWatch: true,
+          restoreScroll: true,
+        });
+      }
     }
 
     if (!this.cleanupRegistered) {
@@ -150,6 +202,10 @@ export class MarkdownViewerApp {
     this.linkClickDisposer?.();
     this.linkClickDisposer = null;
     this.resolvePermissionRequest(false);
+    this.hideCommandPalette();
+    this.hideShortcutsDialog();
+    this.findController.clearHighlights();
+    this.hideFindBar({ clearQuery: false });
 
     if (this.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this.beforeUnloadHandler);
@@ -242,19 +298,11 @@ export class MarkdownViewerApp {
     });
 
     this.bindUiListener(ui.toggleLeftSidebarButton, 'click', () => {
-      this.layoutState.leftSidebarCollapsed = !this.layoutState.leftSidebarCollapsed;
-      this.persistLayoutState();
-      this.applySidebarLayout();
-      this.refreshMeasureWidthControl({ keepAtMax: true });
-      this.applySettingsToDocument();
+      this.toggleSidebar('left');
     });
 
     this.bindUiListener(ui.toggleRightSidebarButton, 'click', () => {
-      this.layoutState.rightSidebarCollapsed = !this.layoutState.rightSidebarCollapsed;
-      this.persistLayoutState();
-      this.applySidebarLayout();
-      this.refreshMeasureWidthControl({ keepAtMax: true });
-      this.applySettingsToDocument();
+      this.toggleSidebar('right');
     });
 
     this.bindUiListener(ui.tabList, 'click', (event) => {
@@ -292,6 +340,10 @@ export class MarkdownViewerApp {
       window.print();
     });
 
+    this.bindUiListener(ui.openCommandPaletteButton, 'click', () => {
+      this.showCommandPalette();
+    });
+
     this.bindUiListener(ui.permissionAllowButton, 'click', () => {
       this.resolvePermissionRequest(true);
     });
@@ -311,7 +363,54 @@ export class MarkdownViewerApp {
       if (keyboardEvent.key === 'Escape' && this.isPermissionDialogVisible()) {
         keyboardEvent.preventDefault();
         this.resolvePermissionRequest(false);
+        return;
       }
+
+      if (keyboardEvent.key === 'Escape' && this.isShortcutsDialogVisible()) {
+        keyboardEvent.preventDefault();
+        this.hideShortcutsDialog();
+        return;
+      }
+
+      if (this.isCommandPaletteVisible()) {
+        const result = this.commandPaletteController.handleKeyboardEvent(keyboardEvent);
+        if (result.handled) {
+          keyboardEvent.preventDefault();
+          if (result.action) {
+            void this.runCommandPaletteAction(result.action);
+          }
+          return;
+        }
+      }
+
+      if (this.isFindBarVisible() && (keyboardEvent.key === 'F3' || keyboardEvent.key === 'Enter')) {
+        if (this.isEditableKeyboardTarget(keyboardEvent.target)) {
+          return;
+        }
+        keyboardEvent.preventDefault();
+        void this.stepFindMatch(keyboardEvent.shiftKey ? 'previous' : 'next');
+        return;
+      }
+
+      if (keyboardEvent.key === 'Escape' && this.isFindBarVisible()) {
+        keyboardEvent.preventDefault();
+        this.hideFindBar({ clearQuery: false });
+        return;
+      }
+
+      const shortcutIntent = resolveKeyboardShortcutIntent({
+        key: keyboardEvent.key,
+        ctrlKey: keyboardEvent.ctrlKey,
+        metaKey: keyboardEvent.metaKey,
+        shiftKey: keyboardEvent.shiftKey,
+        altKey: keyboardEvent.altKey,
+        isEditableTarget: this.isEditableKeyboardTarget(keyboardEvent.target),
+      });
+      if (shortcutIntent.type === 'none') {
+        return;
+      }
+      keyboardEvent.preventDefault();
+      void this.handleKeyboardShortcutIntent(shortcutIntent);
     });
 
     this.bindUiListener(window, 'resize', () => {
@@ -408,6 +507,94 @@ export class MarkdownViewerApp {
 
     this.bindUiListener(ui.clearScrollMemory, 'click', () => {
       this.deps.scrollMemoryStore.clear();
+    });
+
+    this.bindUiListener(ui.findInput, 'input', () => {
+      this.findController.applyQuery(ui.findInput.value);
+    });
+
+    this.bindUiListener(ui.findInput, 'keydown', (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === 'Enter') {
+        keyboardEvent.preventDefault();
+        void this.stepFindMatch(keyboardEvent.shiftKey ? 'previous' : 'next');
+        return;
+      }
+      if (keyboardEvent.key === 'Escape') {
+        keyboardEvent.preventDefault();
+        this.hideFindBar({ clearQuery: false });
+      }
+    });
+
+    this.bindUiListener(ui.findPrev, 'click', () => {
+      void this.stepFindMatch('previous');
+    });
+
+    this.bindUiListener(ui.findNext, 'click', () => {
+      void this.stepFindMatch('next');
+    });
+
+    this.bindUiListener(ui.findClose, 'click', () => {
+      this.hideFindBar({ clearQuery: false });
+    });
+
+    this.bindUiListener(ui.clearRecentDocuments, 'click', () => {
+      this.recentDocuments = createEmptyRecentDocumentsState();
+      this.persistRecentDocuments();
+      this.renderRecentDocuments();
+    });
+
+    this.bindUiListener(ui.recentDocumentsList, 'click', (event) => {
+      const target = event.target as HTMLElement | null;
+      const actionElement = target?.closest<HTMLButtonElement>('button[data-recent-open]');
+      if (!actionElement) {
+        return;
+      }
+
+      const encodedPath = actionElement.dataset.path;
+      if (!encodedPath) {
+        return;
+      }
+      const path = this.decodeUriComponent(encodedPath);
+      void this.openDocumentInTab(path, {
+        activateTab: true,
+        restartWatch: true,
+        restoreScroll: true,
+      });
+    });
+
+    this.bindUiListener(ui.commandPaletteInput, 'input', () => {
+      this.commandPaletteController.filter(ui.commandPaletteInput.value);
+    });
+
+    this.bindUiListener(ui.commandPaletteList, 'click', (event) => {
+      const action = this.commandPaletteController.actionFromListEventTarget(event.target);
+      if (!action) {
+        return;
+      }
+      this.hideCommandPalette();
+      void this.runCommandPaletteAction(action);
+    });
+
+    this.bindUiListener(ui.commandPalette, 'click', (event) => {
+      if (event.target === ui.commandPalette) {
+        this.hideCommandPalette();
+      }
+    });
+
+    this.bindUiListener(ui.showShortcutsHelpButton, 'click', () => {
+      this.hideCommandPalette();
+      this.showShortcutsDialog();
+    });
+
+    this.bindUiListener(ui.shortcutsCloseButton, 'click', () => {
+      this.hideShortcutsDialog();
+    });
+
+    this.bindUiListener(ui.shortcutsDialog, 'click', (event) => {
+      if (event.target === ui.shortcutsDialog) {
+        this.hideShortcutsDialog();
+      }
     });
 
     this.bindUiListener(ui.recoverButton, 'click', () => {
@@ -508,6 +695,7 @@ export class MarkdownViewerApp {
     this.tabState = openDocumentTab(this.tabState, normalizedPath, {
       activate: options.activateTab,
     });
+    this.persistTabSession();
     this.renderTabs();
 
     await this.loadDocument(normalizedPath, {
@@ -522,6 +710,7 @@ export class MarkdownViewerApp {
       return;
     }
     this.tabState = closed.state;
+    this.persistTabSession();
     if (!closed.closedActive) {
       this.renderTabs();
       return;
@@ -544,6 +733,194 @@ export class MarkdownViewerApp {
       restartWatch: true,
       restoreScroll: true,
     });
+  }
+
+  private async handleKeyboardShortcutIntent(intent: KeyboardShortcutIntent): Promise<void> {
+    if (this.isPermissionDialogVisible()) {
+      return;
+    }
+
+    if (intent.type === 'open-command-palette') {
+      this.showCommandPalette();
+      return;
+    }
+
+    if (intent.type === 'show-shortcuts-help') {
+      this.showShortcutsDialog();
+      return;
+    }
+
+    if (intent.type === 'open-find') {
+      this.showFindBar({ selectExistingText: true });
+      return;
+    }
+
+    if (intent.type === 'activate-next-tab' || intent.type === 'activate-previous-tab') {
+      await this.runCommandPaletteAction(
+        intent.type === 'activate-next-tab' ? 'activate-next-tab' : 'activate-previous-tab'
+      );
+      return;
+    }
+
+    if (intent.type === 'close-active-tab') {
+      await this.runCommandPaletteAction('close-active-tab');
+      return;
+    }
+
+    if (intent.type === 'open-file' || intent.type === 'reload-document' || intent.type === 'print-document') {
+      await this.runCommandPaletteAction(intent.type);
+    }
+  }
+
+  private isEditableKeyboardTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    const tagName = target.tagName.toLowerCase();
+    if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+      return true;
+    }
+
+    return target.isContentEditable || target.closest('[contenteditable="true"]') !== null;
+  }
+
+  private showCommandPalette(): void {
+    if (this.isPermissionDialogVisible()) {
+      return;
+    }
+    this.hideShortcutsDialog();
+    this.commandPaletteController.show();
+  }
+
+  private hideCommandPalette(): void {
+    this.commandPaletteController.hide();
+  }
+
+  private isCommandPaletteVisible(): boolean {
+    return this.commandPaletteController.isVisible();
+  }
+
+  private showShortcutsDialog(): void {
+    const { shortcutsDialog } = this.deps.ui;
+    this.hideCommandPalette();
+    shortcutsDialog.classList.add('visible');
+    shortcutsDialog.setAttribute('aria-hidden', 'false');
+    this.deps.ui.shortcutsCloseButton.focus();
+  }
+
+  private hideShortcutsDialog(): void {
+    const { shortcutsDialog } = this.deps.ui;
+    shortcutsDialog.classList.remove('visible');
+    shortcutsDialog.setAttribute('aria-hidden', 'true');
+  }
+
+  private isShortcutsDialogVisible(): boolean {
+    return this.deps.ui.shortcutsDialog.classList.contains('visible');
+  }
+
+  private showFindBar(options: { selectExistingText: boolean }): void {
+    if (this.isPermissionDialogVisible()) {
+      return;
+    }
+
+    this.hideCommandPalette();
+    this.hideShortcutsDialog();
+    this.findController.show(options);
+  }
+
+  private hideFindBar(options: { clearQuery: boolean }): void {
+    this.findController.hide(options);
+  }
+
+  private isFindBarVisible(): boolean {
+    return this.findController.isVisible();
+  }
+
+  private async stepFindMatch(direction: 'next' | 'previous'): Promise<void> {
+    if (!this.findController.query()) {
+      this.showFindBar({ selectExistingText: true });
+      return;
+    }
+
+    this.findController.step(direction);
+  }
+
+  private reapplyFindOnCurrentDocument(): void {
+    this.findController.reapplyOnRenderedDocument();
+  }
+
+  private async runCommandPaletteAction(action: ViewerAction): Promise<void> {
+    if (action === 'open-file') {
+      await this.pickAndOpen();
+      return;
+    }
+
+    if (action === 'reload-document') {
+      await this.reloadCurrentDocument();
+      return;
+    }
+
+    if (action === 'print-document') {
+      window.print();
+      return;
+    }
+
+    if (action === 'open-find') {
+      this.showFindBar({ selectExistingText: true });
+      return;
+    }
+
+    if (action === 'find-next') {
+      this.showFindBar({ selectExistingText: false });
+      await this.stepFindMatch('next');
+      return;
+    }
+
+    if (action === 'find-previous') {
+      this.showFindBar({ selectExistingText: false });
+      await this.stepFindMatch('previous');
+      return;
+    }
+
+    if (action === 'close-active-tab') {
+      const activePath = this.tabState.activePath ?? this.currentDocument?.path ?? null;
+      if (!activePath) {
+        return;
+      }
+      await this.closeTab(activePath);
+      return;
+    }
+
+    if (action === 'activate-next-tab' || action === 'activate-previous-tab') {
+      const targetPath = adjacentDocumentTabPath(
+        this.tabState,
+        action === 'activate-next-tab' ? 'next' : 'previous'
+      );
+      if (!targetPath || targetPath === this.currentDocument?.path) {
+        return;
+      }
+      await this.openDocumentInTab(targetPath, {
+        activateTab: true,
+        restartWatch: true,
+        restoreScroll: true,
+      });
+      return;
+    }
+
+    if (action === 'toggle-left-sidebar') {
+      this.toggleSidebar('left');
+      return;
+    }
+
+    if (action === 'toggle-right-sidebar') {
+      this.toggleSidebar('right');
+      return;
+    }
+
+    if (action === 'show-shortcuts-help') {
+      this.showShortcutsDialog();
+    }
   }
 
   private renderTabs(): void {
@@ -591,9 +968,11 @@ export class MarkdownViewerApp {
         documentDto.path,
         documentDto.title
       );
+      this.persistTabSession();
       this.renderTabs();
 
       this.currentDocument = documentDto;
+      this.rememberRecentDocument(documentDto.path);
       this.deps.ui.errorBanner.classList.remove('visible');
       await this.renderDocument(documentDto, { restoreScroll: options.restoreScroll });
       if (nonce !== this.currentLoadNonce || this.disposed) {
@@ -654,6 +1033,7 @@ export class MarkdownViewerApp {
     if (options.restoreScroll) {
       this.restoreScroll(documentDto.path);
     }
+    this.reapplyFindOnCurrentDocument();
   }
 
   private async renderHtmlInBatches(html: string): Promise<void> {
@@ -1270,6 +1650,34 @@ export class MarkdownViewerApp {
     this.deps.ui.subtitle.textContent = text;
   }
 
+  private rememberRecentDocument(path: string): void {
+    this.recentDocuments = addRecentDocument(this.recentDocuments, path);
+    this.persistRecentDocuments();
+    this.renderRecentDocuments();
+  }
+
+  private renderRecentDocuments(): void {
+    const { recentDocumentsList } = this.deps.ui;
+    const entries = this.recentDocuments.entries;
+
+    if (entries.length === 0) {
+      recentDocumentsList.innerHTML = '<li class="recent-documents-empty">No recent documents</li>';
+      return;
+    }
+
+    recentDocumentsList.innerHTML = entries
+      .map((entry) => {
+        const encodedPath = encodeURIComponent(entry.path);
+        return `<li class="recent-documents-item">
+    <button type="button" class="recent-document-button" data-recent-open="1" data-path="${escapeHtml(encodedPath)}" title="${escapeHtml(entry.path)}">
+      <span class="recent-document-title">${escapeHtml(entry.title)}</span>
+      <span class="recent-document-path">${escapeHtml(entry.path)}</span>
+    </button>
+  </li>`;
+      })
+      .join('');
+  }
+
   private persistScroll(): void {
     if (!this.currentDocument) {
       return;
@@ -1383,6 +1791,18 @@ export class MarkdownViewerApp {
     return parsed;
   }
 
+  private toggleSidebar(side: 'left' | 'right'): void {
+    if (side === 'left') {
+      this.layoutState.leftSidebarCollapsed = !this.layoutState.leftSidebarCollapsed;
+    } else {
+      this.layoutState.rightSidebarCollapsed = !this.layoutState.rightSidebarCollapsed;
+    }
+    this.persistLayoutState();
+    this.applySidebarLayout();
+    this.refreshMeasureWidthControl({ keepAtMax: true });
+    this.applySettingsToDocument();
+  }
+
   private applySidebarLayout(): void {
     const { ui } = this.deps;
     const leftCollapsed = this.layoutState.leftSidebarCollapsed;
@@ -1451,6 +1871,7 @@ export class MarkdownViewerApp {
     </ul>
   </section>`;
     this.renderTabs();
+    this.findController.resetForEmptyContent();
   }
 
   private cleanupObservers(): void {
@@ -1506,6 +1927,14 @@ export class MarkdownViewerApp {
 
   private persistLayoutState(): void {
     this.deps.layoutStateStore.save(this.layoutState);
+  }
+
+  private persistTabSession(): void {
+    this.deps.tabSessionStore.save(toDocumentTabSession(this.tabState));
+  }
+
+  private persistRecentDocuments(): void {
+    this.deps.recentDocumentsStore.save(this.recentDocuments);
   }
 
   private nextFrame(): Promise<void> {

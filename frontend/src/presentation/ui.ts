@@ -3,6 +3,7 @@ export interface ViewerUi {
   openButton: HTMLButtonElement;
   reloadButton: HTMLButtonElement;
   printButton: HTMLButtonElement;
+  openCommandPaletteButton: HTMLButtonElement;
   toggleLeftSidebarButton: HTMLButtonElement;
   toggleRightSidebarButton: HTMLButtonElement;
   perfToggle: HTMLInputElement;
@@ -18,11 +19,19 @@ export interface ViewerUi {
   collapseAllToc: HTMLButtonElement;
   expandAllToc: HTMLButtonElement;
   clearScrollMemory: HTMLButtonElement;
+  clearRecentDocuments: HTMLButtonElement;
   title: HTMLElement;
   subtitle: HTMLElement;
   stats: HTMLElement;
   path: HTMLElement;
   tabList: HTMLUListElement;
+  findBar: HTMLElement;
+  findInput: HTMLInputElement;
+  findCount: HTMLElement;
+  findPrev: HTMLButtonElement;
+  findNext: HTMLButtonElement;
+  findClose: HTMLButtonElement;
+  recentDocumentsList: HTMLUListElement;
   tocList: HTMLUListElement;
   markdownContent: HTMLElement;
   safeContent: HTMLPreElement;
@@ -38,6 +47,12 @@ export interface ViewerUi {
   permissionTarget: HTMLElement;
   permissionAllowButton: HTMLButtonElement;
   permissionCancelButton: HTMLButtonElement;
+  commandPalette: HTMLElement;
+  commandPaletteInput: HTMLInputElement;
+  commandPaletteList: HTMLUListElement;
+  showShortcutsHelpButton: HTMLButtonElement;
+  shortcutsDialog: HTMLElement;
+  shortcutsCloseButton: HTMLButtonElement;
 }
 
 export function mountShell(containerSelector: string, shellHtml: string): void {
@@ -51,6 +66,7 @@ export function createViewerUi(): ViewerUi {
     openButton: mustGet<HTMLButtonElement>('#open-file'),
     reloadButton: mustGet<HTMLButtonElement>('#reload-file'),
     printButton: mustGet<HTMLButtonElement>('#print-view'),
+    openCommandPaletteButton: mustGet<HTMLButtonElement>('#open-command-palette'),
     toggleLeftSidebarButton: mustGet<HTMLButtonElement>('#toggle-left-sidebar'),
     toggleRightSidebarButton: mustGet<HTMLButtonElement>('#toggle-right-sidebar'),
     perfToggle: mustGet<HTMLInputElement>('#performance-mode'),
@@ -66,11 +82,19 @@ export function createViewerUi(): ViewerUi {
     collapseAllToc: mustGet<HTMLButtonElement>('#toc-collapse-all'),
     expandAllToc: mustGet<HTMLButtonElement>('#toc-expand-all'),
     clearScrollMemory: mustGet<HTMLButtonElement>('#clear-scroll-memory'),
+    clearRecentDocuments: mustGet<HTMLButtonElement>('#clear-recent-documents'),
     title: mustGet<HTMLElement>('#doc-title'),
     subtitle: mustGet<HTMLElement>('#doc-subtitle'),
     stats: mustGet<HTMLElement>('#doc-stats'),
     path: mustGet<HTMLElement>('#doc-path'),
     tabList: mustGet<HTMLUListElement>('#doc-tabs'),
+    findBar: mustGet<HTMLElement>('#find-bar'),
+    findInput: mustGet<HTMLInputElement>('#find-input'),
+    findCount: mustGet<HTMLElement>('#find-count'),
+    findPrev: mustGet<HTMLButtonElement>('#find-prev'),
+    findNext: mustGet<HTMLButtonElement>('#find-next'),
+    findClose: mustGet<HTMLButtonElement>('#find-close'),
+    recentDocumentsList: mustGet<HTMLUListElement>('#recent-documents-list'),
     tocList: mustGet<HTMLUListElement>('#toc-list'),
     markdownContent: mustGet<HTMLElement>('#markdown-content'),
     safeContent: mustGet<HTMLPreElement>('#safe-content'),
@@ -86,6 +110,12 @@ export function createViewerUi(): ViewerUi {
     permissionTarget: mustGet<HTMLElement>('#permission-target'),
     permissionAllowButton: mustGet<HTMLButtonElement>('#permission-allow'),
     permissionCancelButton: mustGet<HTMLButtonElement>('#permission-cancel'),
+    commandPalette: mustGet<HTMLElement>('#command-palette'),
+    commandPaletteInput: mustGet<HTMLInputElement>('#command-palette-input'),
+    commandPaletteList: mustGet<HTMLUListElement>('#command-palette-list'),
+    showShortcutsHelpButton: mustGet<HTMLButtonElement>('#show-shortcuts-help'),
+    shortcutsDialog: mustGet<HTMLElement>('#shortcuts-dialog'),
+    shortcutsCloseButton: mustGet<HTMLButtonElement>('#shortcuts-close'),
   };
 }
 

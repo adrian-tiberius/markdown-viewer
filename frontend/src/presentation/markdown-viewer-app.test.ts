@@ -4,11 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fixtureMainMarkdown from '../../../test-fixtures/link-behavior/main.md?raw';
 
 import type {
+  DocumentTabSessionStore,
   DragDropEventPayload,
   ExternalUrlOpener,
   FileUpdatedEvent,
   MarkdownFormattingEngine,
   MarkdownGateway,
+  RecentDocumentsStore,
   ScrollMemoryStore,
   ViewerLayoutStateStore,
   ViewerSettingsStore,
@@ -85,6 +87,22 @@ function findTabCloseButtonByPath(container: HTMLElement, path: string): HTMLBut
     container.querySelectorAll<HTMLButtonElement>('button[data-tab-action="close"]')
   );
   return buttons.find((button) => button.dataset.path === encoded) ?? null;
+}
+
+function findRecentDocumentButtonByPath(
+  container: HTMLElement,
+  path: string
+): HTMLButtonElement | null {
+  const encoded = encodeURIComponent(path);
+  const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button[data-recent-open]'));
+  return buttons.find((button) => button.dataset.path === encoded) ?? null;
+}
+
+function activeCommandAction(container: HTMLElement): string | null {
+  const activeButton = container.querySelector<HTMLButtonElement>(
+    '.command-palette-item.active button[data-command-action]'
+  );
+  return activeButton?.dataset.commandAction ?? null;
 }
 
 async function allowPermission(ui: ReturnType<typeof createViewerUi>): Promise<void> {
@@ -234,6 +252,77 @@ class MemoryScrollStore implements ScrollMemoryStore {
   }
 }
 
+class MemoryTabSessionStore implements DocumentTabSessionStore {
+  private session = {
+    tabPaths: [] as string[],
+    activePath: null as string | null,
+  };
+
+  constructor(
+    initial: { tabPaths: string[]; activePath: string | null } = {
+      tabPaths: [],
+      activePath: null,
+    }
+  ) {
+    this.session = {
+      tabPaths: [...initial.tabPaths],
+      activePath: initial.activePath,
+    };
+  }
+
+  load() {
+    return this.snapshot();
+  }
+
+  save(next: { tabPaths: string[]; activePath: string | null }): void {
+    this.session = {
+      tabPaths: [...next.tabPaths],
+      activePath: next.activePath,
+    };
+  }
+
+  snapshot() {
+    return {
+      tabPaths: [...this.session.tabPaths],
+      activePath: this.session.activePath,
+    };
+  }
+}
+
+class MemoryRecentDocumentsStore implements RecentDocumentsStore {
+  private state = {
+    entries: [] as Array<{ path: string; title: string }>,
+  };
+
+  constructor(
+    initial: {
+      entries: Array<{ path: string; title: string }>;
+    } = {
+      entries: [],
+    }
+  ) {
+    this.state = {
+      entries: initial.entries.map((entry) => ({ ...entry })),
+    };
+  }
+
+  load() {
+    return this.snapshot();
+  }
+
+  save(next: { entries: Array<{ path: string; title: string }> }): void {
+    this.state = {
+      entries: next.entries.map((entry) => ({ ...entry })),
+    };
+  }
+
+  snapshot() {
+    return {
+      entries: this.state.entries.map((entry) => ({ ...entry })),
+    };
+  }
+}
+
 class FakeFormattingEngine implements MarkdownFormattingEngine {
   async renderMath(): Promise<void> {}
 
@@ -265,6 +354,8 @@ interface SetupOptions {
   settingsStore?: MemorySettingsStore;
   layoutStore?: MemoryLayoutStateStore;
   scrollStore?: MemoryScrollStore;
+  tabSessionStore?: MemoryTabSessionStore;
+  recentDocumentsStore?: MemoryRecentDocumentsStore;
 }
 
 function setupApp(options: SetupOptions = {}) {
@@ -278,6 +369,8 @@ function setupApp(options: SetupOptions = {}) {
   const settingsStore = options.settingsStore ?? new MemorySettingsStore();
   const layoutStore = options.layoutStore ?? new MemoryLayoutStateStore();
   const scrollStore = options.scrollStore ?? new MemoryScrollStore();
+  const tabSessionStore = options.tabSessionStore ?? new MemoryTabSessionStore();
+  const recentDocumentsStore = options.recentDocumentsStore ?? new MemoryRecentDocumentsStore();
   const app = new MarkdownViewerApp({
     ui,
     gateway,
@@ -287,6 +380,8 @@ function setupApp(options: SetupOptions = {}) {
     settingsStore,
     layoutStateStore: layoutStore,
     scrollMemoryStore: scrollStore,
+    tabSessionStore,
+    recentDocumentsStore,
   });
   app.start();
 
@@ -297,6 +392,8 @@ function setupApp(options: SetupOptions = {}) {
     settingsStore,
     layoutStore,
     scrollStore,
+    tabSessionStore,
+    recentDocumentsStore,
     ui,
   };
 }
@@ -304,6 +401,29 @@ function setupApp(options: SetupOptions = {}) {
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function dispatchShortcut(
+  target: EventTarget,
+  options: {
+    key: string;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+    altKey?: boolean;
+  }
+): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', {
+    key: options.key,
+    ctrlKey: options.ctrlKey ?? false,
+    metaKey: options.metaKey ?? false,
+    shiftKey: options.shiftKey ?? false,
+    altKey: options.altKey ?? false,
+    bubbles: true,
+    cancelable: true,
+  });
+  target.dispatchEvent(event);
+  return event;
 }
 
 function deferred<T>() {
@@ -450,6 +570,311 @@ describe('MarkdownViewerApp', () => {
         ?.dataset.path
     ).toBe(encodeURIComponent('/tmp/spec.md'));
 
+    await context.app.dispose();
+  });
+
+  it('persists tab workspace session when tabs open and active tab changes', async () => {
+    const tabSessionStore = new MemoryTabSessionStore();
+    const context = setupApp({ tabSessionStore });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    context.gateway.pickResult = '/tmp/notes.md';
+    context.ui.openButton.click();
+    await flushMicrotasks();
+
+    expect(context.tabSessionStore.snapshot()).toEqual({
+      tabPaths: ['/tmp/spec.md', '/tmp/notes.md'],
+      activePath: '/tmp/notes.md',
+    });
+
+    const firstTabButton = findTabButtonByPath(context.ui.tabList, '/tmp/spec.md');
+    expect(firstTabButton).toBeTruthy();
+    firstTabButton!.click();
+    await flushMicrotasks();
+
+    expect(context.tabSessionStore.snapshot()).toEqual({
+      tabPaths: ['/tmp/spec.md', '/tmp/notes.md'],
+      activePath: '/tmp/spec.md',
+    });
+
+    await context.app.dispose();
+  });
+
+  it('restores persisted tabs and active tab on startup', async () => {
+    const tabSessionStore = new MemoryTabSessionStore({
+      tabPaths: ['/tmp/spec.md', '/tmp/notes.md'],
+      activePath: '/tmp/notes.md',
+    });
+    const context = setupApp({ tabSessionStore });
+
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+    });
+
+    expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/notes.md');
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(2);
+    expect(
+      context.ui.tabList.querySelector<HTMLButtonElement>('.doc-tab-item.active .doc-tab-button')
+        ?.dataset.path
+    ).toBe(encodeURIComponent('/tmp/notes.md'));
+    expect(context.ui.path.textContent).toBe('/tmp/notes.md');
+
+    await context.app.dispose();
+  });
+
+  it('uses the initial document path instead of persisted tabs when one is provided', async () => {
+    const tabSessionStore = new MemoryTabSessionStore({
+      tabPaths: ['/tmp/spec.md', '/tmp/notes.md'],
+      activePath: '/tmp/notes.md',
+    });
+    const context = setupApp({
+      initialDocumentPath: '/tmp/from-query.md',
+      tabSessionStore,
+    });
+
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+    });
+
+    expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/from-query.md');
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(1);
+    expect(context.ui.path.textContent).toBe('/tmp/from-query.md');
+    expect(context.tabSessionStore.snapshot()).toEqual({
+      tabPaths: ['/tmp/from-query.md'],
+      activePath: '/tmp/from-query.md',
+    });
+
+    await context.app.dispose();
+  });
+
+  it('renders persisted recent documents and opens selected entries', async () => {
+    const recentDocumentsStore = new MemoryRecentDocumentsStore({
+      entries: [
+        { path: '/tmp/guide.md', title: 'guide.md' },
+        { path: '/tmp/spec.md', title: 'spec.md' },
+      ],
+    });
+    const context = setupApp({ recentDocumentsStore });
+
+    expect(context.ui.recentDocumentsList.querySelectorAll('button[data-recent-open]')).toHaveLength(2);
+    const recentButton = findRecentDocumentButtonByPath(context.ui.recentDocumentsList, '/tmp/guide.md');
+    expect(recentButton).toBeTruthy();
+
+    recentButton!.click();
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+    });
+    expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/guide.md');
+    expect(context.ui.path.textContent).toBe('/tmp/guide.md');
+
+    await context.app.dispose();
+  });
+
+  it('updates and clears recent documents from viewer actions', async () => {
+    const recentDocumentsStore = new MemoryRecentDocumentsStore();
+    const context = setupApp({ recentDocumentsStore });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+    });
+
+    context.gateway.pickResult = '/tmp/notes.md';
+    context.ui.openButton.click();
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(2);
+    });
+
+    expect(context.recentDocumentsStore.snapshot().entries).toEqual([
+      { path: '/tmp/notes.md', title: 'notes.md' },
+      { path: '/tmp/spec.md', title: 'spec.md' },
+    ]);
+    expect(context.ui.recentDocumentsList.querySelectorAll('button[data-recent-open]')).toHaveLength(2);
+
+    context.ui.clearRecentDocuments.click();
+    expect(context.recentDocumentsStore.snapshot().entries).toEqual([]);
+    expect(context.ui.recentDocumentsList.textContent).toContain('No recent documents');
+
+    await context.app.dispose();
+  });
+
+  it('opens command palette, runs find command, and navigates matches', async () => {
+    const gateway = new FakeGateway();
+    gateway.nextDocument = {
+      ...gateway.nextDocument,
+      html: '<p>alpha beta alpha gamma alpha</p>',
+    };
+    const context = setupApp({ gateway });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+    });
+
+    dispatchShortcut(window, { key: 'k', ctrlKey: true });
+    expect(context.ui.commandPalette.classList.contains('visible')).toBe(true);
+
+    context.ui.commandPaletteInput.value = 'find in document';
+    context.ui.commandPaletteInput.dispatchEvent(new Event('input', { bubbles: true }));
+    const findCommand = context.ui.commandPaletteList.querySelector<HTMLButtonElement>(
+      'button[data-command-action="open-find"]'
+    );
+    expect(findCommand).toBeTruthy();
+    findCommand!.click();
+
+    expect(context.ui.findBar.classList.contains('visible')).toBe(true);
+    context.ui.findInput.value = 'alpha';
+    context.ui.findInput.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(context.ui.findCount.textContent).toBe('1 / 3');
+    expect(context.ui.markdownContent.querySelectorAll('mark.mdv-find-match')).toHaveLength(3);
+
+    context.ui.findNext.click();
+    await flushMicrotasks();
+    expect(context.ui.findCount.textContent).toBe('2 / 3');
+
+    context.ui.findPrev.click();
+    await flushMicrotasks();
+    expect(context.ui.findCount.textContent).toBe('1 / 3');
+
+    await context.app.dispose();
+  });
+
+  it('shows instructions dialog from command palette and closes it with escape', async () => {
+    const context = setupApp();
+
+    dispatchShortcut(window, { key: 'k', ctrlKey: true });
+    expect(context.ui.commandPalette.classList.contains('visible')).toBe(true);
+
+    context.ui.showShortcutsHelpButton.click();
+    expect(context.ui.commandPalette.classList.contains('visible')).toBe(false);
+    expect(context.ui.shortcutsDialog.classList.contains('visible')).toBe(true);
+
+    const escapeEvent = dispatchShortcut(window, { key: 'Escape' });
+    expect(escapeEvent.defaultPrevented).toBe(true);
+    expect(context.ui.shortcutsDialog.classList.contains('visible')).toBe(false);
+
+    await context.app.dispose();
+  });
+
+  it('navigates command palette results with keyboard arrows and executes selection on enter', async () => {
+    const context = setupApp();
+
+    dispatchShortcut(window, { key: 'k', ctrlKey: true });
+    expect(context.ui.commandPalette.classList.contains('visible')).toBe(true);
+    expect(activeCommandAction(context.ui.commandPaletteList)).toBe('open-file');
+
+    const downEvent = dispatchShortcut(window, { key: 'ArrowDown' });
+    expect(downEvent.defaultPrevented).toBe(true);
+    expect(activeCommandAction(context.ui.commandPaletteList)).toBe('reload-document');
+
+    const upEvent = dispatchShortcut(window, { key: 'ArrowUp' });
+    expect(upEvent.defaultPrevented).toBe(true);
+    expect(activeCommandAction(context.ui.commandPaletteList)).toBe('open-file');
+
+    const wrapUpEvent = dispatchShortcut(window, { key: 'ArrowUp' });
+    expect(wrapUpEvent.defaultPrevented).toBe(true);
+    expect(activeCommandAction(context.ui.commandPaletteList)).toBe('show-shortcuts-help');
+
+    const enterEvent = dispatchShortcut(window, { key: 'Enter' });
+    expect(enterEvent.defaultPrevented).toBe(true);
+    expect(context.ui.commandPalette.classList.contains('visible')).toBe(false);
+    expect(context.ui.shortcutsDialog.classList.contains('visible')).toBe(true);
+
+    await context.app.dispose();
+  });
+
+  it('handles command palette keyboard input when no commands match', async () => {
+    const context = setupApp();
+
+    dispatchShortcut(window, { key: 'k', ctrlKey: true });
+    context.ui.commandPaletteInput.value = 'zzz no such command';
+    context.ui.commandPaletteInput.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(context.ui.commandPaletteList.textContent).toContain('No commands found');
+
+    const downEvent = dispatchShortcut(window, { key: 'ArrowDown' });
+    expect(downEvent.defaultPrevented).toBe(true);
+    expect(context.ui.commandPalette.classList.contains('visible')).toBe(true);
+
+    const enterEvent = dispatchShortcut(window, { key: 'Enter' });
+    expect(enterEvent.defaultPrevented).toBe(true);
+    expect(context.ui.commandPalette.classList.contains('visible')).toBe(true);
+
+    await context.app.dispose();
+  });
+
+  it('opens find bar with keyboard shortcut and closes it with escape', async () => {
+    const context = setupApp();
+
+    dispatchShortcut(window, { key: 'f', ctrlKey: true });
+    expect(context.ui.findBar.classList.contains('visible')).toBe(true);
+
+    const escapeEvent = dispatchShortcut(window, { key: 'Escape' });
+    expect(escapeEvent.defaultPrevented).toBe(true);
+    expect(context.ui.findBar.classList.contains('visible')).toBe(false);
+
+    await context.app.dispose();
+  });
+
+  it('handles keyboard shortcuts for file actions and tab traversal', async () => {
+    const context = setupApp();
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
+
+    dispatchShortcut(window, { key: 'o', ctrlKey: true });
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+    });
+    expect(context.gateway.loadCalls[0]?.path).toBe('/tmp/spec.md');
+
+    dispatchShortcut(window, { key: 'r', ctrlKey: true });
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(2);
+    });
+    expect(context.gateway.loadCalls[1]?.path).toBe('/tmp/spec.md');
+
+    context.gateway.pickResult = '/tmp/notes.md';
+    dispatchShortcut(window, { key: 'o', ctrlKey: true });
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(3);
+    });
+    expect(context.gateway.loadCalls[2]?.path).toBe('/tmp/notes.md');
+
+    dispatchShortcut(window, { key: 'Tab', ctrlKey: true });
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(4);
+    });
+    expect(context.gateway.loadCalls[3]?.path).toBe('/tmp/spec.md');
+
+    dispatchShortcut(window, { key: 'Tab', ctrlKey: true, shiftKey: true });
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(5);
+    });
+    expect(context.gateway.loadCalls[4]?.path).toBe('/tmp/notes.md');
+
+    dispatchShortcut(window, { key: 'w', ctrlKey: true });
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(6);
+    });
+    expect(context.gateway.loadCalls[5]?.path).toBe('/tmp/spec.md');
+    expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(1);
+
+    dispatchShortcut(window, { key: 'p', ctrlKey: true });
+    expect(printSpy).toHaveBeenCalledTimes(1);
+
+    await context.app.dispose();
+  });
+
+  it('ignores global shortcuts when the keyboard target is editable', async () => {
+    const context = setupApp();
+
+    dispatchShortcut(context.ui.measureWidth, { key: 'o', ctrlKey: true });
+    await flushMicrotasks();
+
+    expect(context.gateway.loadCalls).toHaveLength(0);
     await context.app.dispose();
   });
 

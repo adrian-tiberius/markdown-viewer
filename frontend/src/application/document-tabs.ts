@@ -8,6 +8,11 @@ export interface DocumentTabState {
   activePath: string | null;
 }
 
+export interface DocumentTabSession {
+  tabPaths: string[];
+  activePath: string | null;
+}
+
 export interface CloseDocumentTabResult {
   state: DocumentTabState;
   removed: boolean;
@@ -18,6 +23,13 @@ export interface CloseDocumentTabResult {
 export function createEmptyDocumentTabState(): DocumentTabState {
   return {
     tabs: [],
+    activePath: null,
+  };
+}
+
+export function createEmptyDocumentTabSession(): DocumentTabSession {
+  return {
+    tabPaths: [],
     activePath: null,
   };
 }
@@ -159,4 +171,86 @@ export function applyLoadedDocumentToTabs(
     tabs,
     activePath,
   };
+}
+
+export function mergeDocumentTabSession(parsed: unknown): DocumentTabSession {
+  const source = asRecord(parsed);
+  const session = createEmptyDocumentTabSession();
+  const seen = new Set<string>();
+  const rawPaths = Array.isArray(source.tabPaths) ? source.tabPaths : [];
+
+  for (const candidate of rawPaths) {
+    if (typeof candidate !== 'string') {
+      continue;
+    }
+    const path = candidate.trim();
+    if (!path || seen.has(path)) {
+      continue;
+    }
+    seen.add(path);
+    session.tabPaths.push(path);
+  }
+
+  const activeCandidate = typeof source.activePath === 'string' ? source.activePath.trim() : '';
+  if (activeCandidate && session.tabPaths.includes(activeCandidate)) {
+    session.activePath = activeCandidate;
+    return session;
+  }
+
+  session.activePath = session.tabPaths.at(-1) ?? null;
+  return session;
+}
+
+export function restoreDocumentTabState(session: DocumentTabSession): DocumentTabState {
+  let state = createEmptyDocumentTabState();
+  for (const path of session.tabPaths) {
+    state = openDocumentTab(state, path, {
+      activate: false,
+    });
+  }
+
+  const activePath =
+    session.activePath && state.tabs.some((tab) => tab.path === session.activePath)
+      ? session.activePath
+      : state.tabs.at(-1)?.path ?? null;
+  return {
+    tabs: state.tabs,
+    activePath,
+  };
+}
+
+export function toDocumentTabSession(state: DocumentTabState): DocumentTabSession {
+  const tabPaths = state.tabs.map((tab) => tab.path);
+  const activePath =
+    state.activePath && tabPaths.includes(state.activePath)
+      ? state.activePath
+      : tabPaths.at(-1) ?? null;
+  return {
+    tabPaths,
+    activePath,
+  };
+}
+
+export function adjacentDocumentTabPath(
+  state: DocumentTabState,
+  direction: 'next' | 'previous'
+): string | null {
+  if (state.tabs.length === 0) {
+    return null;
+  }
+
+  const activeIndex = state.tabs.findIndex((tab) => tab.path === state.activePath);
+  const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+  const nextIndex =
+    direction === 'next'
+      ? (currentIndex + 1) % state.tabs.length
+      : (currentIndex - 1 + state.tabs.length) % state.tabs.length;
+  return state.tabs[nextIndex]?.path ?? null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }
