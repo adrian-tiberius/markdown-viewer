@@ -72,6 +72,12 @@ function decodeUriComponent(value: string): string {
 
 function fileUrlToPath(url: URL): string {
   const decodedPath = decodeUriComponent(url.pathname);
+  const host = url.hostname;
+  if (host) {
+    const normalizedPath = decodedPath.startsWith('/') ? decodedPath : `/${decodedPath}`;
+    return `//${host}${normalizedPath}`;
+  }
+
   if (/^\/[a-zA-Z]:\//.test(decodedPath)) {
     return decodedPath.slice(1);
   }

@@ -37,6 +37,15 @@ describe('link-navigation', () => {
     });
   });
 
+  it('classifies UNC file URL markdown links for in-app open', () => {
+    expect(
+      resolveDocumentLinkIntent({ href: 'file://server/share/notes.md', documentPath })
+    ).toEqual({
+      type: 'open-markdown-file',
+      path: '//server/share/notes.md',
+    });
+  });
+
   it('classifies linked non-markdown files for external open', () => {
     expect(resolveDocumentLinkIntent({ href: './assets/sample.txt', documentPath })).toEqual({
       type: 'open-local-file',
