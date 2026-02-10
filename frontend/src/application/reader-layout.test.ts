@@ -13,7 +13,7 @@ describe('reader-layout', () => {
   it('sanitizes invalid values and clamps width within range', () => {
     expect(sanitizeMeasureWidth('x', 76)).toBe(76);
     expect(sanitizeMeasureWidth(10, 76)).toBe(MEASURE_WIDTH_MIN);
-    expect(sanitizeMeasureWidth(9999, 76)).toBe(MEASURE_WIDTH_FALLBACK_MAX);
+    expect(sanitizeMeasureWidth(9999, 76)).toBe(9999);
   });
 
   it('derives measure width max from available content width metrics', () => {
@@ -21,7 +21,6 @@ describe('reader-layout', () => {
       availableWidthPx: 1200,
       horizontalPaddingPx: 48,
       chWidthPx: 8,
-      fallbackMax: 1000,
     });
     expect(max).toBe(144);
   });

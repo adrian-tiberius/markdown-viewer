@@ -1,8 +1,5 @@
 import type { RenderPreferences, WordCountRules } from '../domain';
-import {
-  MEASURE_WIDTH_FALLBACK_MAX,
-  sanitizeMeasureWidth,
-} from './reader-layout';
+import { sanitizeMeasureWidth } from './reader-layout';
 
 export type ThemePreset = 'paper' | 'slate' | 'contrast-light' | 'contrast-dark';
 
@@ -71,8 +68,7 @@ export function mergeViewerSettings(
     ),
     measureWidth: sanitizeMeasureWidth(
       source.measureWidth,
-      DEFAULT_SETTINGS.measureWidth,
-      MEASURE_WIDTH_FALLBACK_MAX
+      DEFAULT_SETTINGS.measureWidth
     ),
     tocAutoExpand: asBoolean(source.tocAutoExpand, DEFAULT_SETTINGS.tocAutoExpand),
     wordCountRules: {

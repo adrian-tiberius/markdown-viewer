@@ -5,7 +5,7 @@ import type {
   ViewerLayoutState,
   ViewerLayoutStateStore,
   ViewerSettingsStore,
-} from '../presentation/ports';
+} from '../application/ports';
 import { mergeViewerSettings, type ViewerSettings } from '../application/settings';
 import {
   createEmptyDocumentTabSession,

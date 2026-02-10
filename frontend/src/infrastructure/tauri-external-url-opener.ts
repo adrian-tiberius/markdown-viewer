@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
-import type { ExternalUrlOpener } from '../presentation/ports';
+import type { ExternalUrlOpener } from '../application/ports';
 
 export class TauriExternalUrlOpener implements ExternalUrlOpener {
   async openExternalUrl(url: string): Promise<void> {

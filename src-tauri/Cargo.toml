@@ -50,7 +50,6 @@ markdown_viewer_application = { path = "crates/application" }
 markdown_viewer_infrastructure = { path = "crates/infrastructure" }
 markdown_viewer_presentation = { path = "crates/presentation" }
 tauri-plugin-opener.workspace = true
-open.workspace = true
 
 [dev-dependencies]
 serde_json = "1.0.149"

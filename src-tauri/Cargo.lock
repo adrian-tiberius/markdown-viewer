@@ -83,7 +83,6 @@ dependencies = [
  "markdown_viewer_application",
  "markdown_viewer_infrastructure",
  "markdown_viewer_presentation",
- "open",
  "regex",
  "rfd",
  "serde",
@@ -2173,6 +2172,7 @@ dependencies = [
  "markdown_viewer_application",
  "markdown_viewer_domain",
  "notify",
+ "open",
  "url",
 ]
 

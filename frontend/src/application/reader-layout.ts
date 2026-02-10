@@ -1,12 +1,15 @@
 export const MEASURE_WIDTH_MIN = 58;
 export const MEASURE_WIDTH_FALLBACK_MAX = 480;
+const MEASURE_WIDTH_UNBOUNDED_MAX = Number.MAX_SAFE_INTEGER;
 
 export function sanitizeMeasureWidth(
   value: unknown,
   fallback: number,
-  max: number = MEASURE_WIDTH_FALLBACK_MAX
+  max: number = MEASURE_WIDTH_UNBOUNDED_MAX
 ): number {
-  const normalizedMax = Math.max(MEASURE_WIDTH_MIN, Math.floor(max));
+  const normalizedMax = Number.isFinite(max)
+    ? Math.max(MEASURE_WIDTH_MIN, Math.floor(max))
+    : MEASURE_WIDTH_UNBOUNDED_MAX;
   const normalizedFallback = clampMeasureWidth(fallback, normalizedMax);
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return normalizedFallback;
@@ -38,7 +41,7 @@ export function deriveMeasureWidthMax(input: {
 
   const contentWidth = Math.max(0, input.availableWidthPx - Math.max(0, input.horizontalPaddingPx));
   const computed = Math.floor(contentWidth / input.chWidthPx);
-  return Math.max(MEASURE_WIDTH_MIN, Math.min(fallbackMax, computed));
+  return Math.max(MEASURE_WIDTH_MIN, computed);
 }
 
 export function reconcileMeasureWidthOnMaxChange(input: {

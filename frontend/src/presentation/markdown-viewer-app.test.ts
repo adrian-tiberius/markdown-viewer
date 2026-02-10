@@ -14,7 +14,7 @@ import type {
   ScrollMemoryStore,
   ViewerLayoutStateStore,
   ViewerSettingsStore,
-} from './ports';
+} from '../application/ports';
 import {
   DEFAULT_SETTINGS,
   type ViewerSettings,
@@ -178,6 +178,24 @@ class FakeGateway implements MarkdownGateway {
   }
 }
 
+class PathSelectiveFailureGateway extends FakeGateway {
+  failingPaths = new Set<string>();
+
+  override async loadMarkdownFile(
+    path: string,
+    preferences: RenderPreferences
+  ): Promise<MarkdownDocument> {
+    this.loadCalls.push({ path, preferences });
+    if (this.failingPaths.has(path)) {
+      throw new Error(`load failed for ${path}`);
+    }
+    return {
+      ...this.nextDocument,
+      path,
+    };
+  }
+}
+
 class MemorySettingsStore implements ViewerSettingsStore {
   private settings: ViewerSettings;
 
@@ -324,9 +342,13 @@ class MemoryRecentDocumentsStore implements RecentDocumentsStore {
 }
 
 class FakeFormattingEngine implements MarkdownFormattingEngine {
-  async renderMath(): Promise<void> {}
+  async renderMathToHtml(): Promise<string> {
+    return '';
+  }
 
-  async highlightCodeElement(): Promise<void> {}
+  async highlightCodeToHtml(): Promise<string> {
+    return '';
+  }
 }
 
 class FakeExternalUrlOpener implements ExternalUrlOpener {
@@ -571,6 +593,42 @@ describe('MarkdownViewerApp', () => {
     ).toBe(encodeURIComponent('/tmp/spec.md'));
 
     await context.app.dispose();
+  });
+
+  it('restores previous tab state when opening a new tab fails to load', async () => {
+    const gateway = new PathSelectiveFailureGateway();
+    const tabSessionStore = new MemoryTabSessionStore();
+    const context = setupApp({ gateway, tabSessionStore });
+    try {
+      await flushMicrotasks();
+      context.ui.openButton.click();
+      await flushMicrotasks();
+
+      gateway.pickResult = '/tmp/broken.md';
+      gateway.failingPaths.add('/tmp/broken.md');
+      context.ui.openButton.click();
+
+      await vi.waitFor(() => {
+        expect(context.gateway.loadCalls.map((call) => call.path)).toEqual([
+          '/tmp/spec.md',
+          '/tmp/broken.md',
+        ]);
+      });
+      await vi.waitFor(() => {
+        expect(context.ui.tabList.querySelectorAll('.doc-tab-item')).toHaveLength(1);
+      });
+      expect(
+        context.ui.tabList.querySelector<HTMLButtonElement>('.doc-tab-item.active .doc-tab-button')
+          ?.dataset.path
+      ).toBe(encodeURIComponent('/tmp/spec.md'));
+      expect(context.ui.path.textContent).toBe('/tmp/spec.md');
+      expect(context.tabSessionStore.snapshot()).toEqual({
+        tabPaths: ['/tmp/spec.md'],
+        activePath: '/tmp/spec.md',
+      });
+    } finally {
+      await context.app.dispose();
+    }
   });
 
   it('persists tab workspace session when tabs open and active tab changes', async () => {

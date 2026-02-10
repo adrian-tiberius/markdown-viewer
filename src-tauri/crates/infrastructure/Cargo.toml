@@ -8,6 +8,7 @@ rust-version = "1.77.2"
 [dependencies]
 comrak.workspace = true
 notify.workspace = true
+open.workspace = true
 url.workspace = true
 markdown_viewer_application = { path = "../application" }
 markdown_viewer_domain = { path = "../domain" }

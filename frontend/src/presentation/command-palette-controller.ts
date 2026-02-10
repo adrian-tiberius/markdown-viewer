@@ -20,14 +20,12 @@ export interface CommandPaletteKeyboardResult {
 export class CommandPaletteController {
   private readonly deps: CommandPaletteControllerDeps;
   private readonly commands: CommandPaletteCommand[];
-  private readonly actions: Set<ViewerAction>;
   private filteredCommands: CommandPaletteCommand[] = [];
   private selectionIndex = 0;
 
   constructor(deps: CommandPaletteControllerDeps) {
     this.deps = deps;
     this.commands = deps.commands ?? [...DEFAULT_COMMAND_PALETTE_COMMANDS];
-    this.actions = new Set(this.commands.map((command) => command.action));
     this.filter('');
   }
 
@@ -54,24 +52,6 @@ export class CommandPaletteController {
     this.filteredCommands = filterCommandPaletteCommands(this.commands, rawQuery);
     this.selectionIndex = 0;
     this.render();
-  }
-
-  actionFromListEventTarget(target: EventTarget | null): ViewerAction | null {
-    if (!(target instanceof HTMLElement)) {
-      return null;
-    }
-
-    const actionElement = target.closest<HTMLButtonElement>('button[data-command-action]');
-    if (!actionElement) {
-      return null;
-    }
-
-    const action = actionElement.dataset.commandAction;
-    if (!action || !this.isViewerAction(action)) {
-      return null;
-    }
-
-    return action;
   }
 
   handleKeyboardEvent(event: KeyboardEvent): CommandPaletteKeyboardResult {
@@ -173,7 +153,4 @@ export class CommandPaletteController {
     }
   }
 
-  private isViewerAction(value: string): value is ViewerAction {
-    return this.actions.has(value as ViewerAction);
-  }
 }

@@ -6,7 +6,7 @@ import type {
   DragDropEventPayload,
   FileUpdatedEvent,
   MarkdownGateway,
-} from '../presentation/ports';
+} from '../application/ports';
 import type { MarkdownDocument, RenderPreferences } from '../domain';
 
 const FILE_UPDATED_EVENT = 'markdown://file-updated';

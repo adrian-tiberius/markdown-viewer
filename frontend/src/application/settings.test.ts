@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { MEASURE_WIDTH_FALLBACK_MAX } from './reader-layout';
 import { DEFAULT_SETTINGS, mergeViewerSettings } from './settings';
 
 describe('settings', () => {
@@ -43,11 +42,11 @@ describe('settings', () => {
     });
   });
 
-  it('clamps measure width to the configured maximum', () => {
+  it('preserves large measure widths and lets runtime layout clamp against visible space', () => {
     const merged = mergeViewerSettings({
       measureWidth: 999 as unknown as number,
     });
 
-    expect(merged.measureWidth).toBe(MEASURE_WIDTH_FALLBACK_MAX);
+    expect(merged.measureWidth).toBe(999);
   });
 });

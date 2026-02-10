@@ -23,7 +23,6 @@ const FORBIDDEN_INNER_LAYER_GLOBAL_PATTERNS = [
   { label: 'CSS', pattern: /\bCSS\./ },
 ];
 type ArchitectureLayer = 'domain' | 'application' | 'infrastructure' | 'presentation';
-const ALLOWED_INFRASTRUCTURE_PRESENTATION_IMPORTS = ['presentation/ports'];
 
 function isTestSourceFile(filePath: string): boolean {
   return /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(filePath);
@@ -142,17 +141,10 @@ function violatesLayerDependencyRule(layer: ArchitectureLayer, targetLayer: Arch
   }
 
   if (layer === 'infrastructure') {
-    return false;
+    return targetLayer === 'presentation';
   }
 
   return layer === 'presentation' && targetLayer === 'infrastructure';
-}
-
-function isAllowedInfrastructurePresentationImport(localImportPath: string): boolean {
-  return ALLOWED_INFRASTRUCTURE_PRESENTATION_IMPORTS.some(
-    (allowedPath) =>
-      localImportPath === allowedPath || localImportPath.startsWith(`${allowedPath}/`)
-  );
 }
 
 function isCoreLayer(layer: ArchitectureLayer): boolean {
@@ -228,17 +220,6 @@ describe('clean architecture boundaries', () => {
           if (!targetLayer) {
             violations.push(
               `${filePath} -> ${specifier} (runtime imports must stay inside architecture layers)`
-            );
-            continue;
-          }
-
-          if (
-            layer === 'infrastructure' &&
-            targetLayer === 'presentation' &&
-            !isAllowedInfrastructurePresentationImport(localImportPath)
-          ) {
-            violations.push(
-              `${filePath} -> ${specifier} (infrastructure may only depend on presentation ports)`
             );
             continue;
           }

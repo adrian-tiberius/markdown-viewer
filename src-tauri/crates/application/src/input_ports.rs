@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::error::MarkdownViewerError;
 use crate::models::{MarkdownDocumentOutput, RenderPreferencesInput};
-use crate::use_cases::{LoadMarkdownFileUseCase, WatchMarkdownFileUseCase};
+use crate::use_cases::{LoadMarkdownFileUseCase, OpenLinkedFileUseCase, WatchMarkdownFileUseCase};
 
 pub trait LoadMarkdownFileInputPort: Send + Sync {
     fn execute(
@@ -43,5 +43,23 @@ impl WatchMarkdownFileInputPort for WatchMarkdownFileUseCase {
 
     fn stop(&self) {
         WatchMarkdownFileUseCase::stop(self);
+    }
+}
+
+pub trait OpenLinkedFileInputPort: Send + Sync {
+    fn execute(
+        &self,
+        linked_path_input: &str,
+        source_document_path_input: &str,
+    ) -> Result<(), MarkdownViewerError>;
+}
+
+impl OpenLinkedFileInputPort for OpenLinkedFileUseCase {
+    fn execute(
+        &self,
+        linked_path_input: &str,
+        source_document_path_input: &str,
+    ) -> Result<(), MarkdownViewerError> {
+        OpenLinkedFileUseCase::execute(self, linked_path_input, source_document_path_input)
     }
 }

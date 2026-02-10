@@ -1,10 +1,7 @@
-import type {
-  MarkdownDocument,
-  RenderPreferences,
-} from '../domain';
-import type { ViewerSettings } from '../application/settings';
-import type { DocumentTabSession } from '../application/document-tabs';
-import type { RecentDocumentsState } from '../application/recent-documents';
+import type { MarkdownDocument, RenderPreferences } from '../domain';
+import type { DocumentTabSession } from './document-tabs';
+import type { RecentDocumentsState } from './recent-documents';
+import type { ViewerSettings } from './settings';
 
 export interface DragDropEventPayload {
   type: 'enter' | 'leave' | 'over' | 'drop';
@@ -15,18 +12,37 @@ export interface FileUpdatedEvent {
   path: string;
 }
 
-export interface MarkdownGateway {
+export interface MarkdownFilePicker {
   pickMarkdownFile(): Promise<string | null>;
+}
+
+export interface MarkdownFileLoader {
   loadMarkdownFile(path: string, preferences: RenderPreferences): Promise<MarkdownDocument>;
+}
+
+export interface MarkdownWatchController {
   startMarkdownWatch(path: string): Promise<void>;
   stopMarkdownWatch(): Promise<void>;
+}
+
+export interface MarkdownFileUpdateEvents {
   onMarkdownFileUpdated(handler: (event: FileUpdatedEvent) => void): Promise<() => void>;
+}
+
+export interface DragDropEvents {
   onDragDrop(handler: (event: DragDropEventPayload) => void): Promise<() => void>;
 }
 
+export interface MarkdownGateway
+  extends MarkdownFilePicker,
+    MarkdownFileLoader,
+    MarkdownWatchController,
+    MarkdownFileUpdateEvents,
+    DragDropEvents {}
+
 export interface MarkdownFormattingEngine {
-  renderMath(formula: string, target: HTMLElement, displayMode: boolean): Promise<void>;
-  highlightCodeElement(target: HTMLElement): Promise<void>;
+  renderMathToHtml(formula: string, displayMode: boolean): Promise<string>;
+  highlightCodeToHtml(sourceCode: string, language: string | null): Promise<string>;
 }
 
 export interface ExternalUrlOpener {

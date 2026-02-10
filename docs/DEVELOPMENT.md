@@ -35,7 +35,7 @@ cargo tauri dev
 - `application`: use-cases and app-level policies, no DOM/Tauri access.
 - `domain` and `application`: no external package/style/asset imports; depend only on local layer modules.
 - `infrastructure`: adapters to external systems (Tauri API, local storage).
-- `presentation`: UI/DOM orchestration, view concerns, and adapter ports (`presentation/ports.ts`).
+- `presentation`: UI/DOM orchestration and view concerns.
 - `main.ts`: composition root only.
 
 Enforced by: `frontend/src/architecture.boundaries.test.ts`.
@@ -56,7 +56,7 @@ Enforced by: `src-tauri/tests/clean_architecture_boundaries.rs`.
 
 1. Add/update domain types in `frontend/src/domain`.
 2. Add use-case logic in `frontend/src/application`.
-3. Extend adapter port interfaces in `frontend/src/presentation/ports.ts` if needed.
+3. Extend adapter port interfaces in `frontend/src/application/ports.ts` if needed.
 4. Implement adapters in `frontend/src/infrastructure`.
 5. Wire behavior in `frontend/src/presentation`.
 6. Keep startup wiring in `frontend/src/main.ts` minimal.
