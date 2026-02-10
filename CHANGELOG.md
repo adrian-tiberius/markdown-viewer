@@ -15,6 +15,7 @@ Versioning for release tags.
 - Linux desktop smoke script added and wired into CI for every push/PR run.
 - Diagnostics report export command added for troubleshooting and support workflows.
 - Render chunking thresholds were extracted into tested application-level performance budget policies.
+- Release workflow now publishes updater `latest.json` to GitHub Releases and signs updater artifacts via Tauri updater keys.
 
 ### Changed
 

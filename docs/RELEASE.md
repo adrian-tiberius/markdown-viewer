@@ -1,6 +1,6 @@
 # Open Source Release Runbook
 
-Use this guide for the first public publication and for future prereleases.
+Use this guide for the first public publication and future tagged releases.
 
 ## 1. Create the GitHub repository (one-time)
 
@@ -98,7 +98,28 @@ Prepare release notes in `CHANGELOG.md`:
 - Add/update the version section (example: `0.1.0-alpha.1`) with date.
 - Include known limitations for prerelease transparency.
 
-## 6. Publish a prerelease tag
+### Updater signing + GitHub Releases feed secrets (required)
+
+Set these repository secrets before tagging:
+
+- `TAURI_SIGNING_PRIVATE_KEY`: updater private key text from `cargo tauri signer generate`.
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: password for that key (optional if key has no password).
+- `TAURI_UPDATER_PUBLIC_KEY`: matching updater public key text.
+
+Generate keys once (local machine, keep private key secure):
+
+```bash
+cd src-tauri
+cargo tauri signer generate --ci -w .tauri/updater.key
+```
+
+The release workflow injects:
+
+- `plugins.updater.pubkey` from `TAURI_UPDATER_PUBLIC_KEY`.
+- `plugins.updater.endpoints` as
+  `https://github.com/<owner>/<repo>/releases/latest/download/latest.json`.
+
+## 6. Publish a release tag
 
 From a clean `main` checkout:
 
@@ -111,18 +132,23 @@ git push origin v0.1.0-alpha.1
 What happens next:
 
 - `.github/workflows/release.yml` builds Linux, macOS, and Windows bundles.
-- CI smoke-tests each platform binary.
-- Workflow publishes only end-user distributables (`.AppImage`, `.deb`, `.rpm`, `.dmg`, `.exe`, `.msi`, `.zip`, optional `.sig`) plus `SHA256SUMS.txt`.
-- Workflow publishes a GitHub release marked as `prerelease`.
+- Workflow signs updater artifacts with the updater private key and uploads signatures.
+- Workflow uploads `latest.json` to GitHub Releases for updater feed consumption.
+- macOS and Windows app bundles remain unsigned/notarization-free unless platform credentials are configured separately.
+- Workflow publishes/updates a GitHub release for the tag.
+
+Note: GitHub updater endpoint uses `/releases/latest/download/latest.json`.
+That route follows the latest non-draft, non-prerelease release.
 
 ## 7. Post-release validation
 
 After the workflow succeeds:
 
 1. Open the GitHub release page and verify all platform artifacts exist.
-2. Confirm `SHA256SUMS.txt` is attached.
-3. Download one artifact per platform and run a basic launch smoke test.
-4. Ensure release notes match `CHANGELOG.md`.
+2. Confirm `latest.json` is attached.
+3. Confirm updater `.sig` files are attached for updater bundles.
+4. Download one artifact per platform and run a basic launch smoke test.
+5. Ensure release notes match `CHANGELOG.md`.
 
 If a tag was re-run and old assets remained on an existing release, cleanup stale files:
 
@@ -134,5 +160,4 @@ If a tag was re-run and old assets remained on an existing release, cleanup stal
 
 - Configure code signing for Windows/macOS installers.
 - Configure macOS notarization.
-- Add automatic update channel/signing pipeline.
 - Add SBOM generation and release artifact attestation.
