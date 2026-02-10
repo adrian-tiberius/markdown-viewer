@@ -11,6 +11,7 @@ describe('document-link-controller (presentation)', () => {
       '<h2><a id="mdv-inline-html" aria-hidden="true"></a>Inline HTML</h2>',
       '<p><a id="anchor-link" href="#html">Inline HTML</a></p>',
       '<p><a id="external-link" href="https://example.com/docs">External</a></p>',
+      '<p><a id="blocked-link" href="javascript:alert(1)">Blocked</a></p>',
       '<p><a id="markdown-link" href="./next.md">Next</a></p>',
       '<p><a id="local-link" href="./assets/sample-image.svg">Asset</a></p>',
       '<img id="relative-image" src="./assets/sample-image.svg" />',
@@ -20,11 +21,13 @@ describe('document-link-controller (presentation)', () => {
     const openExternalUrl = vi.fn();
     const openMarkdownFile = vi.fn();
     const openLocalFile = vi.fn();
+    const onBlockedLink = vi.fn();
     const controller = new DocumentLinkController({
       ui: { markdownContent },
       openExternalUrl,
       openMarkdownFile,
       openLocalFile,
+      onBlockedLink,
     });
 
     const sourcePath = '/work/markdown-viewer/test-fixtures/link-behavior/main.md';
@@ -47,6 +50,11 @@ describe('document-link-controller (presentation)', () => {
     markdownContent.querySelector<HTMLElement>('#external-link')!.dispatchEvent(externalEvent);
     expect(externalEvent.defaultPrevented).toBe(true);
     expect(openExternalUrl).toHaveBeenCalledWith('https://example.com/docs');
+
+    const blockedEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    markdownContent.querySelector<HTMLElement>('#blocked-link')!.dispatchEvent(blockedEvent);
+    expect(blockedEvent.defaultPrevented).toBe(true);
+    expect(onBlockedLink).toHaveBeenCalledWith('Blocked unsupported link protocol: javascript:');
 
     const markdownEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
     markdownContent.querySelector<HTMLElement>('#markdown-link')!.dispatchEvent(markdownEvent);

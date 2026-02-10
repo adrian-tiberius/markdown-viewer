@@ -145,6 +145,7 @@ export function createMarkdownViewerRuntime(
     openMarkdownFile: async (path: string) => linkDispatcher.openMarkdownFile(path),
     openLocalFile: async (path: string, sourceDocumentPath: string) =>
       linkDispatcher.openLocalFile(path, sourceDocumentPath),
+    onBlockedLink: deps.onErrorBanner,
   });
 
   const workspaceRuntime = createDocumentWorkspaceRuntime({

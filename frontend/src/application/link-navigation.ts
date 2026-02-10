@@ -9,6 +9,7 @@ const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'
 
 export type LinkIntent =
   | { type: 'none' }
+  | { type: 'blocked-external-protocol'; protocol: string }
   | { type: 'scroll-to-anchor'; fragment: string }
   | { type: 'open-external-url'; url: string }
   | { type: 'open-markdown-file'; path: string }
@@ -35,7 +36,7 @@ export function resolveDocumentLinkIntent(input: {
       if (isSupportedExternalProtocol(url.protocol)) {
         return { type: 'open-external-url', url: url.toString() };
       }
-      return { type: 'none' };
+      return { type: 'blocked-external-protocol', protocol: url.protocol };
     }
 
     const targetFile = withoutFragment(url.toString());

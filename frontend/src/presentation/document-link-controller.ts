@@ -10,6 +10,7 @@ interface DocumentLinkControllerDeps {
   openExternalUrl: (url: string) => Promise<void> | void;
   openMarkdownFile: (path: string) => Promise<void> | void;
   openLocalFile: (path: string, sourceDocumentPath: string) => Promise<void> | void;
+  onBlockedLink: (message: string) => void;
 }
 
 export class DocumentLinkController {
@@ -68,6 +69,13 @@ export class DocumentLinkController {
         href,
         documentPath,
       });
+
+      if (intent.type === 'blocked-external-protocol') {
+        event.preventDefault();
+        this.deps.onBlockedLink(`Blocked unsupported link protocol: ${intent.protocol}`);
+        return;
+      }
+
       if (intent.type === 'none') {
         return;
       }

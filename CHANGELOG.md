@@ -17,6 +17,7 @@ Versioning for release tags.
 
 - Default desktop capability now includes updater permissions.
 - Known limitation wording updated to reflect updater channel/signing setup still pending.
+- Unsupported external link protocols are now explicitly blocked with user-visible feedback.
 
 ### Fixed
 

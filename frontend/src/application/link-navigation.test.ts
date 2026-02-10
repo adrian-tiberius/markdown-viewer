@@ -24,10 +24,10 @@ describe('link-navigation', () => {
     });
   });
 
-  it('ignores unsupported external protocols', () => {
+  it('blocks unsupported external protocols', () => {
     expect(
       resolveDocumentLinkIntent({ href: 'javascript:alert(1)', documentPath })
-    ).toEqual({ type: 'none' });
+    ).toEqual({ type: 'blocked-external-protocol', protocol: 'javascript:' });
   });
 
   it('classifies linked markdown files for in-app open', () => {
