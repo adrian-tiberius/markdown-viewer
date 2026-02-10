@@ -2,6 +2,7 @@ export type ViewerAction =
   | 'open-file'
   | 'reload-document'
   | 'print-document'
+  | 'export-diagnostics'
   | 'check-for-updates'
   | 'open-find'
   | 'open-command-palette'

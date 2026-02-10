@@ -53,6 +53,13 @@ export const DEFAULT_COMMAND_PALETTE_COMMANDS: CommandPaletteCommand[] = [
     ['print', 'pdf', 'export']
   ),
   actionCommand(
+    'export-diagnostics',
+    'Export Diagnostics Report',
+    'Save a support diagnostics JSON report for troubleshooting.',
+    '',
+    ['diagnostics', 'support', 'debug', 'export']
+  ),
+  actionCommand(
     'check-for-updates',
     'Check For Updates',
     'Check for newer versions and install updates.',

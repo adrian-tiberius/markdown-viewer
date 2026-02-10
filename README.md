@@ -19,6 +19,7 @@ This project is an internal alpha tool. Expect active iteration and occasional b
 - `Safe Mode` fallback that shows raw markdown if rendering fails.
 - Command palette quick-open across open tabs and recent documents.
 - Single-instance handoff for markdown files opened via OS launch arguments.
+- Diagnostics report export for support and debugging.
 - Configurable typography/theme settings persisted in local storage.
 - Word count and reading time with configurable counting rules.
 

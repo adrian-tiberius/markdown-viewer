@@ -4,6 +4,7 @@ import { CommandPaletteController } from './command-palette-controller';
 import type { CommandPaletteCommand, CommandPaletteSelection } from './command-palette';
 import type { UpdateCheckResult } from '../application/ports';
 import type { FindController } from './find-controller';
+import { errorToMessage } from './error-utils';
 import type { ViewerUi } from './ui';
 
 interface ViewerCommandControllerDeps {
@@ -18,6 +19,7 @@ interface ViewerCommandControllerDeps {
     openFile: () => Promise<void>;
     reloadDocument: () => Promise<void>;
     printDocument: () => void;
+    exportDiagnostics: () => Promise<string>;
     checkForUpdates: () => Promise<UpdateCheckResult>;
     openDocumentPath: (path: string) => Promise<void>;
     closeActiveTab: () => Promise<void>;
@@ -284,6 +286,16 @@ export class ViewerCommandController {
 
     if (action === 'print-document') {
       this.deps.actions.printDocument();
+      return;
+    }
+
+    if (action === 'export-diagnostics') {
+      try {
+        const fileName = await this.deps.actions.exportDiagnostics();
+        this.deps.showMessage(`Diagnostics report exported: ${fileName}`);
+      } catch (error) {
+        this.deps.showMessage(`Diagnostics export failed: ${errorToMessage(error)}`);
+      }
       return;
     }
 

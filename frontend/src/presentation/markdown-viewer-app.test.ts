@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fixtureMainMarkdown from '../../../test-fixtures/link-behavior/main.md?raw';
 
 import type {
+  AppVersionProvider,
+  DiagnosticsReportWriter,
   DocumentTabSessionStore,
   DragDropEventPayload,
   ExternalUrlOpener,
@@ -396,11 +398,29 @@ class FakeUpdaterService implements UpdateService {
   }
 }
 
+class MemoryDiagnosticsReportWriter implements DiagnosticsReportWriter {
+  saveCalls: Array<{ fileName: string; content: string }> = [];
+
+  async saveReport(fileName: string, content: string): Promise<void> {
+    this.saveCalls.push({ fileName, content });
+  }
+}
+
+class FakeAppVersionProvider implements AppVersionProvider {
+  version = '0.1.0-alpha.1';
+
+  async getAppVersion(): Promise<string> {
+    return this.version;
+  }
+}
+
 interface SetupOptions {
   gateway?: FakeGateway;
   formattingEngine?: MarkdownFormattingEngine;
   externalUrlOpener?: ExternalUrlOpener;
   updateService?: UpdateService;
+  appVersionProvider?: AppVersionProvider;
+  diagnosticsReportWriter?: DiagnosticsReportWriter;
   initialDocumentPath?: string | null;
   settingsStore?: MemorySettingsStore;
   layoutStore?: MemoryLayoutStateStore;
@@ -418,6 +438,9 @@ function setupApp(options: SetupOptions = {}) {
   const formattingEngine = options.formattingEngine ?? new FakeFormattingEngine();
   const externalUrlOpener = options.externalUrlOpener ?? new FakeExternalUrlOpener();
   const updateService = options.updateService ?? new FakeUpdaterService();
+  const appVersionProvider = options.appVersionProvider ?? new FakeAppVersionProvider();
+  const diagnosticsReportWriter =
+    options.diagnosticsReportWriter ?? new MemoryDiagnosticsReportWriter();
   const settingsStore = options.settingsStore ?? new MemorySettingsStore();
   const layoutStore = options.layoutStore ?? new MemoryLayoutStateStore();
   const scrollStore = options.scrollStore ?? new MemoryScrollStore();
@@ -429,6 +452,8 @@ function setupApp(options: SetupOptions = {}) {
     formattingEngine,
     externalUrlOpener,
     updateService,
+    appVersionProvider,
+    diagnosticsReportWriter,
     initialDocumentPath: options.initialDocumentPath,
     settingsStore,
     layoutStateStore: layoutStore,
@@ -442,6 +467,8 @@ function setupApp(options: SetupOptions = {}) {
     app,
     gateway,
     externalUrlOpener,
+    appVersionProvider,
+    diagnosticsReportWriter,
     settingsStore,
     layoutStore,
     scrollStore,
@@ -914,6 +941,40 @@ describe('MarkdownViewerApp', () => {
     context.ui.findPrev.click();
     await flushMicrotasks();
     expect(context.ui.findCount.textContent).toBe('1 / 3');
+
+    await context.app.dispose();
+  });
+
+  it('exports diagnostics report from command palette action', async () => {
+    const diagnosticsReportWriter = new MemoryDiagnosticsReportWriter();
+    const appVersionProvider = new FakeAppVersionProvider();
+    appVersionProvider.version = '9.9.9-test';
+    const context = setupApp({
+      diagnosticsReportWriter,
+      appVersionProvider,
+    });
+
+    await flushMicrotasks();
+    context.ui.openButton.click();
+    await vi.waitFor(() => {
+      expect(context.gateway.loadCalls).toHaveLength(1);
+    });
+
+    dispatchShortcut(window, { key: 'k', ctrlKey: true });
+    context.ui.commandPaletteInput.value = 'diagnostics';
+    context.ui.commandPaletteInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const diagnosticsCommand = context.ui.commandPaletteList.querySelector<HTMLButtonElement>(
+      'button[data-command-action="export-diagnostics"]'
+    );
+    expect(diagnosticsCommand).toBeTruthy();
+    diagnosticsCommand!.click();
+    await flushMicrotasks();
+
+    expect(diagnosticsReportWriter.saveCalls).toHaveLength(1);
+    expect(diagnosticsReportWriter.saveCalls[0]?.fileName).toContain('markdown-viewer-diagnostics-');
+    expect(diagnosticsReportWriter.saveCalls[0]?.content).toContain('"appVersion": "9.9.9-test"');
+    expect(diagnosticsReportWriter.saveCalls[0]?.content).toContain('"currentDocumentPath": "/tmp/spec.md"');
 
     await context.app.dispose();
   });

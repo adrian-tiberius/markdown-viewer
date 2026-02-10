@@ -1,6 +1,8 @@
 import type {
   DocumentTabSessionStore,
   ExternalUrlOpener,
+  AppVersionProvider,
+  DiagnosticsReportWriter,
   MarkdownFormattingEngine,
   MarkdownGateway,
   RecentDocumentsStore,
@@ -18,6 +20,8 @@ interface MarkdownViewerAppDeps {
   formattingEngine: MarkdownFormattingEngine;
   externalUrlOpener: ExternalUrlOpener;
   updateService: UpdateService;
+  appVersionProvider: AppVersionProvider;
+  diagnosticsReportWriter: DiagnosticsReportWriter;
   initialDocumentPath?: string | null;
   settingsStore: ViewerSettingsStore;
   layoutStateStore: ViewerLayoutStateStore;
@@ -44,6 +48,8 @@ export class MarkdownViewerApp {
       formattingEngine: this.deps.formattingEngine,
       externalUrlOpener: this.deps.externalUrlOpener,
       updateService: this.deps.updateService,
+      appVersionProvider: this.deps.appVersionProvider,
+      diagnosticsReportWriter: this.deps.diagnosticsReportWriter,
       settingsStore: this.deps.settingsStore,
       layoutStateStore: this.deps.layoutStateStore,
       scrollMemoryStore: this.deps.scrollMemoryStore,

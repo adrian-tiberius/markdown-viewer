@@ -9,6 +9,8 @@ import { FindController } from './find-controller';
 import { LinkPermissionController } from './link-permission-controller';
 import { PermissionDialogController } from './permission-dialog-controller';
 import type {
+  AppVersionProvider,
+  DiagnosticsReportWriter,
   DocumentTabSessionStore,
   ExternalUrlOpener,
   MarkdownFormattingEngine,
@@ -19,6 +21,10 @@ import type {
   ViewerLayoutStateStore,
   ViewerSettingsStore,
 } from '../application/ports';
+import {
+  buildDiagnosticsReport,
+  diagnosticsReportFileName,
+} from '../application/diagnostics';
 import { buildWorkspaceQuickOpenItems } from '../application/workspace-quick-open';
 import {
   createWorkspaceQuickOpenCommands,
@@ -36,6 +42,8 @@ interface CreateMarkdownViewerRuntimeDeps {
   formattingEngine: MarkdownFormattingEngine;
   externalUrlOpener: ExternalUrlOpener;
   updateService: UpdateService;
+  appVersionProvider: AppVersionProvider;
+  diagnosticsReportWriter: DiagnosticsReportWriter;
   settingsStore: ViewerSettingsStore;
   layoutStateStore: ViewerLayoutStateStore;
   scrollMemoryStore: ScrollMemoryStore;
@@ -210,6 +218,22 @@ export function createMarkdownViewerRuntime(
     ];
   };
 
+  const exportDiagnosticsReport = async () => {
+    const generatedAtIso = new Date().toISOString();
+    const report = buildDiagnosticsReport({
+      generatedAtIso,
+      appVersion: await deps.appVersionProvider.getAppVersion(),
+      userAgent: navigator.userAgent,
+      currentDocumentPath: workspaceController.currentDocumentPath(),
+      openTabCount: workspaceController.tabStateSnapshot().tabs.length,
+      recentDocumentCount: workspaceController.recentDocumentsSnapshot().entries.length,
+      settings: preferencesController.currentSettings(),
+    });
+    const fileName = diagnosticsReportFileName(generatedAtIso);
+    await deps.diagnosticsReportWriter.saveReport(fileName, report);
+    return fileName;
+  };
+
   const commandController = new ViewerCommandController({
     ui: {
       shortcutsDialog: deps.ui.shortcutsDialog,
@@ -229,6 +253,7 @@ export function createMarkdownViewerRuntime(
       printDocument: () => {
         window.print();
       },
+      exportDiagnostics: () => exportDiagnosticsReport(),
       checkForUpdates: () => deps.updateService.checkForUpdates(),
       openDocumentPath: (path: string) => workspaceController.openRecentDocument(path),
       closeActiveTab: () => workspaceController.closeActiveTab(),

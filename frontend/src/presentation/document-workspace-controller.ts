@@ -146,6 +146,10 @@ export class DocumentWorkspaceController {
     return this.deps.runtime.state.currentDocumentSource();
   }
 
+  currentDocumentPath(): string | null {
+    return this.deps.runtime.state.currentDocumentPath();
+  }
+
   currentTocEntries(): TocEntry[] {
     return this.deps.runtime.state.currentTocEntries();
   }

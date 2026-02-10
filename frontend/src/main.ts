@@ -10,6 +10,8 @@ import {
   LocalStorageViewerSettingsStore,
 } from './infrastructure/local-storage';
 import { BrowserMarkdownFormattingEngine } from './infrastructure/markdown-formatting-engine';
+import { BrowserDiagnosticsReportWriter } from './infrastructure/browser-diagnostics-report-writer';
+import { TauriAppVersionProvider } from './infrastructure/tauri-app-version-provider';
 import { TauriExternalUrlOpener } from './infrastructure/tauri-external-url-opener';
 import { TauriMarkdownGateway } from './infrastructure/tauri-markdown-gateway';
 import { TauriUpdaterService } from './infrastructure/tauri-updater-service';
@@ -34,6 +36,8 @@ const app = new MarkdownViewerApp({
   formattingEngine: new BrowserMarkdownFormattingEngine(),
   externalUrlOpener: new TauriExternalUrlOpener(),
   updateService: new TauriUpdaterService(),
+  appVersionProvider: new TauriAppVersionProvider(),
+  diagnosticsReportWriter: new BrowserDiagnosticsReportWriter(),
   initialDocumentPath: initialDocumentPathFromQuery(),
   settingsStore: new LocalStorageViewerSettingsStore(),
   layoutStateStore: new LocalStorageViewerLayoutStateStore(),

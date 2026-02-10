@@ -65,6 +65,14 @@ export interface UpdateService {
   checkForUpdates(): Promise<UpdateCheckResult>;
 }
 
+export interface AppVersionProvider {
+  getAppVersion(): Promise<string>;
+}
+
+export interface DiagnosticsReportWriter {
+  saveReport(fileName: string, content: string): Promise<void>;
+}
+
 export interface ViewerSettingsStore {
   load(): ViewerSettings;
   save(next: ViewerSettings): void;

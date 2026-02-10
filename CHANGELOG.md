@@ -13,6 +13,7 @@ Versioning for release tags.
 - Workspace quick-open commands in the command palette using open tabs and recent documents.
 - Single-instance markdown open handoff via launch argument event + startup path consumption command.
 - Linux desktop smoke script added and wired into CI for every push/PR run.
+- Diagnostics report export command added for troubleshooting and support workflows.
 
 ### Changed
 
