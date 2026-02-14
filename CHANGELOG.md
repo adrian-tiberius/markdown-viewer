@@ -20,7 +20,7 @@ Versioning for release tags.
 ### Changed
 
 - Viewer UI binder internals were split into smaller methods for lower coupling and easier maintenance.
-- App version metadata was aligned to `0.1.0-alpha.4` across desktop/frontend manifests.
+- App version metadata is aligned to `0.1.0-alpha.5` across desktop/frontend manifests.
 
 ### Fixed
 

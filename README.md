@@ -5,7 +5,7 @@ watching, syntax highlighting, math rendering, and a Clean Architecture codebase
 
 ## Status
 
-**Internal Alpha**: `0.1.0-alpha.4`
+**Internal Alpha**: `0.1.0-alpha.5`
 **Repository**: `https://github.com/adrian-tiberius/markdown-viewer`
 
 This project is an internal alpha tool. Expect active iteration and occasional breaking changes.

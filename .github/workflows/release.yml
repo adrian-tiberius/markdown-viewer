@@ -87,6 +87,71 @@ jobs:
           fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
           EOF
 
+      - name: Validate release version matches tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const fs = require('node:fs');
+
+          const tagVersion = (process.env.RELEASE_TAG || '').replace(/^v/, '');
+          if (!tagVersion) {
+            console.error('RELEASE_TAG was not provided');
+            process.exit(1);
+          }
+
+          const tauriConfig = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          const tauriConfigVersion = tauriConfig.version;
+
+          const frontendPackage = JSON.parse(fs.readFileSync('frontend/package.json', 'utf8'));
+          const frontendVersion = frontendPackage.version;
+
+          const cargoToml = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
+          const cargoLines = cargoToml.split(/\r?\n/);
+          let inPackageSection = false;
+          let cargoVersion;
+          for (const rawLine of cargoLines) {
+            const line = rawLine.trim();
+            if (line.startsWith('[') && line.endsWith(']')) {
+              if (line === '[package]') {
+                inPackageSection = true;
+                continue;
+              }
+              if (inPackageSection) {
+                break;
+              }
+            }
+            if (!inPackageSection) {
+              continue;
+            }
+            const versionMatch = line.match(/^version\s*=\s*"([^"]+)"/);
+            if (versionMatch) {
+              cargoVersion = versionMatch[1];
+              break;
+            }
+          }
+
+          const versions = {
+            tagVersion,
+            tauriConfigVersion,
+            frontendVersion,
+            cargoVersion,
+          };
+
+          const mismatches = Object.entries(versions).filter(([, value]) => value !== tagVersion);
+          if (mismatches.length > 0) {
+            console.error(`Release tag/version mismatch for tag ${tagVersion}:`);
+            for (const [key, value] of mismatches) {
+              console.error(`- ${key}: ${value ?? '<missing>'}`);
+            }
+            process.exit(1);
+          }
+
+          console.log(`Release versions validated for tag ${tagVersion}`);
+          EOF
+
       - name: Extract release notes from CHANGELOG
         id: changelog_notes
         shell: bash
