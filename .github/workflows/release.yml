@@ -96,7 +96,7 @@ jobs:
         with:
           projectPath: src-tauri
           tagName: ${{ github.ref_name }}
-          releaseName: Markdown Viewer ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
