@@ -87,6 +87,53 @@ jobs:
           fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
           EOF
 
+      - name: Extract release notes from CHANGELOG
+        id: changelog_notes
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          notes="$(
+            awk -v version="$version" '
+              $0 ~ "^## \\[" version "\\] - " {
+                capture = 1
+                next
+              }
+              capture && $0 ~ "^## \\[" {
+                capture = 0
+              }
+              capture {
+                lines[++n] = $0
+              }
+              END {
+                start = 1
+                while (start <= n && lines[start] == "") {
+                  start++
+                }
+                end = n
+                while (end >= start && lines[end] == "") {
+                  end--
+                }
+                for (i = start; i <= end; i++) {
+                  print lines[i]
+                }
+              }
+            ' CHANGELOG.md
+          )"
+
+          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            echo "Could not find release notes for ${version} in CHANGELOG.md"
+            exit 1
+          fi
+
+          {
+            echo "release_body<<'EOF'"
+            echo "$notes"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and publish release assets
         uses: tauri-apps/tauri-action@v0
         env:
@@ -97,6 +144,7 @@ jobs:
           projectPath: src-tauri
           tagName: ${{ github.ref_name }}
           releaseName: ${{ github.ref_name }}
+          releaseBody: ${{ steps.changelog_notes.outputs.release_body }}
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
