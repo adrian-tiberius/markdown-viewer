@@ -167,6 +167,24 @@ fn first_markdown_path_from_args(args: &[String], cwd: Option<&Path>) -> Option<
     None
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios", test))]
+fn first_markdown_path_from_urls(urls: &[tauri::Url]) -> Option<String> {
+    for url in urls {
+        if url.scheme() != "file" {
+            continue;
+        }
+
+        let Ok(path) = url.to_file_path() else {
+            continue;
+        };
+        let path_input = path.to_string_lossy();
+        if let Some(resolved) = markdown_path_from_arg(path_input.as_ref(), None) {
+            return Some(resolved);
+        }
+    }
+    None
+}
+
 fn markdown_path_from_arg(arg: &str, cwd: Option<&Path>) -> Option<String> {
     let trimmed = arg.trim();
     if trimmed.is_empty() || trimmed.starts_with('-') {
@@ -218,7 +236,7 @@ pub fn run() {
         OpenLinkedFileUseCase::new(path_canonicalizer, linked_file_opener),
     );
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             if let Some(path) = first_markdown_path_from_args(&args, Some(Path::new(&cwd))) {
                 emit_open_path_event(app, path);
@@ -253,8 +271,17 @@ pub fn run() {
             open_linked_file,
             consume_launch_open_path
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, _event| {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        if let tauri::RunEvent::Opened { urls } = _event {
+            if let Some(path) = first_markdown_path_from_urls(&urls) {
+                emit_open_path_event(_app_handle, path);
+            }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -274,10 +301,10 @@ mod tests {
     };
 
     use super::{
-        first_markdown_path_from_args, load_markdown_file_inner, markdown_path_from_arg,
-        start_markdown_watch_inner, stop_markdown_watch_inner, AppState, ComrakMarkdownRenderer,
-        LocalMarkdownFileRepository, MarkdownFileUpdatedEvent, MarkdownViewerError,
-        RenderPreferencesDto, MARKDOWN_FILE_UPDATED_EVENT,
+        first_markdown_path_from_args, first_markdown_path_from_urls, load_markdown_file_inner,
+        markdown_path_from_arg, start_markdown_watch_inner, stop_markdown_watch_inner, AppState,
+        ComrakMarkdownRenderer, LocalMarkdownFileRepository, MarkdownFileUpdatedEvent,
+        MarkdownViewerError, RenderPreferencesDto, MARKDOWN_FILE_UPDATED_EVENT,
     };
 
     struct TestWatchService {
@@ -484,6 +511,32 @@ mod tests {
 
         let resolved = first_markdown_path_from_args(&args, None)
             .expect("first valid markdown launch arg should resolve");
+        assert_eq!(
+            resolved,
+            markdown
+                .canonicalize()
+                .expect("temp markdown should canonicalize")
+                .to_string_lossy()
+                .into_owned()
+        );
+
+        let _ = std::fs::remove_file(text);
+        let _ = std::fs::remove_file(markdown);
+    }
+
+    #[test]
+    fn first_markdown_path_from_urls_uses_first_valid_file_url_candidate() {
+        let text = write_temp_file("txt", "ignore");
+        let markdown = write_temp_markdown("# use this");
+        let urls = vec![
+            tauri::Url::parse("https://example.com/readme.md")
+                .expect("test url should parse correctly"),
+            tauri::Url::from_file_path(&text).expect("text file url should build"),
+            tauri::Url::from_file_path(&markdown).expect("markdown file url should build"),
+        ];
+
+        let resolved = first_markdown_path_from_urls(&urls)
+            .expect("first valid markdown file url should resolve");
         assert_eq!(
             resolved,
             markdown

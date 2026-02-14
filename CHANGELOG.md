@@ -13,6 +13,7 @@ Versioning for release tags.
 - Deterministic `?runtime=e2e` runtime adapters were added for reproducible browser test flows.
 - Critical user workflow E2E coverage was added (document lifecycle, link permissions, workspace updates).
 - CI now runs Playwright E2E tests across Linux, macOS, and Windows.
+- Desktop bundle now registers markdown file associations (`.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`) so installed builds can open these files directly.
 
 ### Changed
 

@@ -13,6 +13,7 @@ This project is an internal alpha tool. Expect active iteration and occasional b
 ## Features
 
 - Open markdown files from dialog or drag-and-drop.
+- Bundled installers register markdown file associations (`.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`).
 - Live reload when the file changes on disk.
 - Table of contents with active-section tracking and collapse/expand controls.
 - `Performance Mode` for lower-cost rendering on heavy documents.
