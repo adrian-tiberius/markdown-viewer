@@ -1,6 +1,6 @@
-import './style.css';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
+import './style.css';
 
 import type {
   AppVersionProvider,

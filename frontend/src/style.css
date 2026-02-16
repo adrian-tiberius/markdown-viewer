@@ -24,6 +24,13 @@
   --toc-link-active: #1f6d74;
   --danger: #9a2f2f;
   --shadow: 0 12px 30px rgba(56, 44, 26, 0.12);
+  --code-fg: #2b2a28;
+  --code-muted: #5f676f;
+  --code-keyword: #8d1f31;
+  --code-title: #5b34af;
+  --code-number: #004f8c;
+  --code-string: #0d4a56;
+  --code-builtin: #9d4b0f;
 }
 
 :root[data-theme='slate'] {
@@ -44,6 +51,13 @@
   --toc-link-active: #8fe4d8;
   --danger: #ff8b8b;
   --shadow: 0 12px 34px rgba(1, 5, 7, 0.55);
+  --code-fg: #e7edf2;
+  --code-muted: #9aadb9;
+  --code-keyword: #8fd6ff;
+  --code-title: #d2b4ff;
+  --code-number: #f7c780;
+  --code-string: #9de3b8;
+  --code-builtin: #ffb680;
 }
 
 :root[data-theme='contrast-light'] {
@@ -84,6 +98,13 @@
   --toc-link-active: #9ff4e9;
   --danger: #ff8b8b;
   --shadow: none;
+  --code-fg: #ffffff;
+  --code-muted: #d3d3d3;
+  --code-keyword: #9fe7ff;
+  --code-title: #e2d4ff;
+  --code-number: #ffe199;
+  --code-string: #c9ffb5;
+  --code-builtin: #bff7f1;
 }
 
 * {
@@ -639,6 +660,86 @@ body {
   background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
   font-family: var(--mono-font);
   font-size: 0.88rem;
+}
+
+.markdown-body pre code {
+  color: var(--code-fg);
+}
+
+:root[data-theme='slate'] .markdown-body pre .hljs-comment,
+:root[data-theme='slate'] .markdown-body pre .hljs-quote,
+:root[data-theme='slate'] .markdown-body pre .hljs-code,
+:root[data-theme='slate'] .markdown-body pre .hljs-formula,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-comment,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-quote,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-code,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-formula {
+  color: var(--code-muted);
+}
+
+:root[data-theme='slate'] .markdown-body pre .hljs-keyword,
+:root[data-theme='slate'] .markdown-body pre .hljs-template-tag,
+:root[data-theme='slate'] .markdown-body pre .hljs-template-variable,
+:root[data-theme='slate'] .markdown-body pre .hljs-type,
+:root[data-theme='slate'] .markdown-body pre .hljs-variable.language_,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-keyword,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-template-tag,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-template-variable,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-type,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-variable.language_ {
+  color: var(--code-keyword);
+}
+
+:root[data-theme='slate'] .markdown-body pre .hljs-title,
+:root[data-theme='slate'] .markdown-body pre .hljs-section,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-title,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-section {
+  color: var(--code-title);
+}
+
+:root[data-theme='slate'] .markdown-body pre .hljs-attr,
+:root[data-theme='slate'] .markdown-body pre .hljs-attribute,
+:root[data-theme='slate'] .markdown-body pre .hljs-literal,
+:root[data-theme='slate'] .markdown-body pre .hljs-meta,
+:root[data-theme='slate'] .markdown-body pre .hljs-number,
+:root[data-theme='slate'] .markdown-body pre .hljs-operator,
+:root[data-theme='slate'] .markdown-body pre .hljs-variable,
+:root[data-theme='slate'] .markdown-body pre .hljs-selector-attr,
+:root[data-theme='slate'] .markdown-body pre .hljs-selector-class,
+:root[data-theme='slate'] .markdown-body pre .hljs-selector-id,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-attr,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-attribute,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-literal,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-meta,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-number,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-operator,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-variable,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-selector-attr,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-selector-class,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-selector-id {
+  color: var(--code-number);
+}
+
+:root[data-theme='slate'] .markdown-body pre .hljs-regexp,
+:root[data-theme='slate'] .markdown-body pre .hljs-string,
+:root[data-theme='slate'] .markdown-body pre .hljs-meta .hljs-string,
+:root[data-theme='slate'] .markdown-body pre .hljs-name,
+:root[data-theme='slate'] .markdown-body pre .hljs-selector-tag,
+:root[data-theme='slate'] .markdown-body pre .hljs-selector-pseudo,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-regexp,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-string,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-meta .hljs-string,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-name,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-selector-tag,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-selector-pseudo {
+  color: var(--code-string);
+}
+
+:root[data-theme='slate'] .markdown-body pre .hljs-built_in,
+:root[data-theme='slate'] .markdown-body pre .hljs-symbol,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-built_in,
+:root[data-theme='contrast-dark'] .markdown-body pre .hljs-symbol {
+  color: var(--code-builtin);
 }
 
 .markdown-body code {
