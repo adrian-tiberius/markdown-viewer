@@ -77,6 +77,7 @@ export class MarkdownViewerApp {
     this.runtime.uiBinder.bind();
     this.runtime.preferencesController.start();
     this.runtime.crashHandlerController.install();
+    void this.renderAppVersion(lifecycleToken);
     void this.runtime.runtimeListenerController.register(lifecycleToken);
     this.runtime.workspaceController.start(this.deps.initialDocumentPath?.trim() ?? null);
 
@@ -112,6 +113,34 @@ export class MarkdownViewerApp {
 
   private isLifecycleActive(lifecycleToken: number): boolean {
     return this.started && !this.disposed && lifecycleToken === this.lifecycleToken;
+  }
+
+  private async renderAppVersion(lifecycleToken: number): Promise<void> {
+    let version = 'unknown';
+    try {
+      version = await this.deps.appVersionProvider.getAppVersion();
+    } catch {
+      version = 'unknown';
+    }
+
+    if (!this.isLifecycleActive(lifecycleToken)) {
+      return;
+    }
+
+    const normalizedVersion = version.trim().replace(/^v/i, '').trim();
+    const label = normalizedVersion.length > 0 ? normalizedVersion : 'unknown';
+    const title = `Markdown Viewer v${label}`;
+    document.title = title;
+    void this.applyNativeWindowTitle(title);
+  }
+
+  private async applyNativeWindowTitle(title: string): Promise<void> {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().setTitle(title);
+    } catch {
+      // Browser/e2e runtime does not expose native window APIs.
+    }
   }
 
   private activateSafeMode(reason: string, detail: string, source: string | null): void {

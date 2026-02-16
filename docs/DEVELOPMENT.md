@@ -142,5 +142,5 @@ cargo tauri build
 
 ```bash
 cargo build --release --manifest-path src-tauri/Cargo.toml
-./scripts/smoke-desktop-linux.sh ./src-tauri/target/release/app
+./scripts/smoke-desktop-linux.sh ./src-tauri/target/release/markdown-viewer
 ```

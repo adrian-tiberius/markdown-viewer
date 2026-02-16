@@ -666,6 +666,18 @@ describe('MarkdownViewerApp', () => {
     await context.app.dispose();
   });
 
+  it('renders the current app version in the window title', async () => {
+    const appVersionProvider = new FakeAppVersionProvider();
+    appVersionProvider.version = '9.9.9-test';
+    const context = setupApp({ appVersionProvider });
+
+    await vi.waitFor(() => {
+      expect(document.title).toBe('Markdown Viewer v9.9.9-test');
+    });
+
+    await context.app.dispose();
+  });
+
   it('opens markdown paths from runtime open-path requests and ignores non-markdown paths', async () => {
     const context = setupApp();
 

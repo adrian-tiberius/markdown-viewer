@@ -76,27 +76,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
-name = "app"
-version = "0.1.0-alpha.6"
-dependencies = [
- "log",
- "markdown_viewer_application",
- "markdown_viewer_infrastructure",
- "markdown_viewer_presentation",
- "regex",
- "rfd",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-log",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2201,6 +2180,27 @@ name = "mac"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
+
+[[package]]
+name = "markdown-viewer"
+version = "0.1.0-alpha.7"
+dependencies = [
+ "log",
+ "markdown_viewer_application",
+ "markdown_viewer_infrastructure",
+ "markdown_viewer_presentation",
+ "regex",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-log",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "toml 0.8.23",
+]
 
 [[package]]
 name = "markdown_viewer_application"

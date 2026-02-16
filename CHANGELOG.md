@@ -7,6 +7,24 @@ Versioning for release tags.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7] - 2026-02-16
+
+### Added
+
+- Window title now includes the running app version for faster support/debug verification.
+
+### Changed
+
+- Linux desktop binary naming now uses `markdown-viewer` instead of `app`, and supporting CI/smoke-test paths were updated accordingly.
+- Header layout now uses grouped controls and cleaner reading toggles with improved responsive behavior.
+- Workspace column sizing now scales fluidly with window width before mobile collapse.
+- App version metadata is aligned to `0.1.0-alpha.7` across desktop/frontend manifests.
+
+### Fixed
+
+- Content now shrinks correctly at narrower desktop widths, preventing the reading sidebar from dropping underneath the viewer column.
+- Safe mode/reader long tokens now wrap correctly instead of forcing overflow.
+
 ## [0.1.0-alpha.6] - 2026-02-16
 
 ### Changed
@@ -130,7 +148,8 @@ Versioning for release tags.
 - Automatic updates are not configured.
 - Code-signing and notarization are not configured.
 
-[Unreleased]: https://github.com/adrian-tiberius/markdown-viewer/compare/v0.1.0-alpha.6...HEAD
+[Unreleased]: https://github.com/adrian-tiberius/markdown-viewer/compare/v0.1.0-alpha.7...HEAD
+[0.1.0-alpha.7]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.7
 [0.1.0-alpha.6]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.4

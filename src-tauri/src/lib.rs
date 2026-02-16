@@ -504,7 +504,7 @@ mod tests {
         let text = write_temp_file("txt", "ignore");
         let markdown = write_temp_markdown("# use this");
         let args = vec![
-            "app".to_string(),
+            "markdown-viewer".to_string(),
             text.to_string_lossy().into_owned(),
             markdown.to_string_lossy().into_owned(),
         ];

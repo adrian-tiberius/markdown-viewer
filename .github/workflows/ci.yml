@@ -52,7 +52,7 @@ jobs:
         run: cargo build --release --manifest-path src-tauri/Cargo.toml
 
       - name: Smoke test release desktop binary (Linux)
-        run: ./scripts/smoke-desktop-linux.sh ./src-tauri/target/release/app
+        run: ./scripts/smoke-desktop-linux.sh ./src-tauri/target/release/markdown-viewer
 
   e2e:
     name: E2E (${{ matrix.os }})

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-BINARY_PATH="${1:-./src-tauri/target/release/app}"
+BINARY_PATH="${1:-./src-tauri/target/release/markdown-viewer}"
 SMOKE_SECONDS="${SMOKE_SECONDS:-10}"
 
 if [[ ! -x "$BINARY_PATH" ]]; then

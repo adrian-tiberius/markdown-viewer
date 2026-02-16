@@ -4,14 +4,16 @@ export function appShell(): string {
   return `
     <div class="app-shell">
       <header class="topbar">
-        <div class="topbar-left">
-          <button id="open-file" class="btn primary">Open File</button>
-          <button id="reload-file" class="btn">Reload</button>
-          <button id="print-view" class="btn">Print / PDF</button>
-          <button id="open-command-palette" class="btn ghost">Command Palette</button>
+        <div class="topbar-primary" aria-label="File actions">
+          <div class="toolbar-group toolbar-group-main">
+            <button id="open-file" class="btn primary">Open File</button>
+            <button id="reload-file" class="btn">Reload</button>
+            <button id="print-view" class="btn">Print / PDF</button>
+            <button id="open-command-palette" class="btn ghost">Command Palette</button>
+          </div>
         </div>
-        <div class="topbar-right">
-          <div class="sidebar-controls" aria-label="Layout">
+        <div class="topbar-secondary" aria-label="Reading controls">
+          <div class="toolbar-group sidebar-controls" role="group" aria-label="Layout">
             <button
               id="toggle-left-sidebar"
               class="btn ghost sidebar-toggle"
@@ -31,14 +33,16 @@ export function appShell(): string {
               Hide Reading
             </button>
           </div>
-          <label class="toggle">
-            <input id="performance-mode" type="checkbox" />
-            <span>Performance Mode</span>
-          </label>
-          <label class="toggle">
-            <input id="safe-mode" type="checkbox" />
-            <span>Safe Mode</span>
-          </label>
+          <div class="toolbar-group toolbar-group-modes" role="group" aria-label="Modes">
+            <label class="toggle mode-toggle">
+              <input id="performance-mode" type="checkbox" />
+              <span>Performance</span>
+            </label>
+            <label class="toggle mode-toggle">
+              <input id="safe-mode" type="checkbox" />
+              <span>Safe Mode</span>
+            </label>
+          </div>
         </div>
       </header>
 
