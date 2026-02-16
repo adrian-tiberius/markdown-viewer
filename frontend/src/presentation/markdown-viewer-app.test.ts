@@ -1431,6 +1431,30 @@ describe('MarkdownViewerApp', () => {
     await context.app.dispose();
   });
 
+  it('caps measure width max to the current window viewport width', async () => {
+    const context = setupApp();
+    const viewerScroll = context.ui.viewerScroll;
+    const viewportWidth = window.innerWidth;
+
+    Object.defineProperty(viewerScroll, 'clientWidth', {
+      configurable: true,
+      value: viewportWidth + 600,
+    });
+    window.dispatchEvent(new Event('resize'));
+    const oversizedMax = Number(context.ui.measureWidth.max);
+
+    Object.defineProperty(viewerScroll, 'clientWidth', {
+      configurable: true,
+      value: viewportWidth,
+    });
+    window.dispatchEvent(new Event('resize'));
+    const viewportMax = Number(context.ui.measureWidth.max);
+
+    expect(oversizedMax).toBe(viewportMax);
+
+    await context.app.dispose();
+  });
+
   it('journey: open document, navigate anchor, open linked markdown in tab, switch and close tab', async () => {
     const markdownFileLink = fixtureLink('./secondary.md');
     const legacyAnchorLink = fixtureLink('#html');

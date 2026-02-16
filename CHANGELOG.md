@@ -7,6 +7,17 @@ Versioning for release tags.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6] - 2026-02-16
+
+### Changed
+
+- Reader measure-width limits now derive from the active window viewport, not oversized layout bounds.
+- App version metadata is aligned to `0.1.0-alpha.6` across desktop/frontend manifests.
+
+### Fixed
+
+- Main app shell sizing now tracks the current window size instead of static `100vh` behavior.
+
 ## [0.1.0-alpha.5] - 2026-02-14
 
 ### Added
@@ -119,7 +130,8 @@ Versioning for release tags.
 - Automatic updates are not configured.
 - Code-signing and notarization are not configured.
 
-[Unreleased]: https://github.com/adrian-tiberius/markdown-viewer/compare/v0.1.0-alpha.5...HEAD
+[Unreleased]: https://github.com/adrian-tiberius/markdown-viewer/compare/v0.1.0-alpha.6...HEAD
+[0.1.0-alpha.6]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/adrian-tiberius/markdown-viewer/releases/tag/v0.1.0-alpha.3

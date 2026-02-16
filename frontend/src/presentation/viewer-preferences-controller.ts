@@ -211,7 +211,9 @@ export class ViewerPreferencesController {
   }
 
   private calculateMeasureWidthMaxForLayout(): number {
-    const availableWidth = this.deps.ui.viewerScroll.clientWidth;
+    const scrollWidth = this.deps.ui.viewerScroll.clientWidth;
+    const viewportWidth = this.currentViewportWidthPx();
+    const availableWidth = scrollWidth > 0 ? Math.min(scrollWidth, viewportWidth) : viewportWidth;
     const articleStyle = window.getComputedStyle(this.deps.ui.markdownContent);
     const paddingLeft = this.parsePx(articleStyle.paddingLeft);
     const paddingRight = this.parsePx(articleStyle.paddingRight);
@@ -222,6 +224,28 @@ export class ViewerPreferencesController {
       chWidthPx: chWidth,
       fallbackMax: MEASURE_WIDTH_FALLBACK_MAX,
     });
+  }
+
+  private currentViewportWidthPx(): number {
+    const visualViewportWidth = window.visualViewport?.width;
+    if (
+      typeof visualViewportWidth === 'number' &&
+      Number.isFinite(visualViewportWidth) &&
+      visualViewportWidth > 0
+    ) {
+      return visualViewportWidth;
+    }
+
+    if (Number.isFinite(window.innerWidth) && window.innerWidth > 0) {
+      return window.innerWidth;
+    }
+
+    const documentWidth = document.documentElement.clientWidth;
+    if (Number.isFinite(documentWidth) && documentWidth > 0) {
+      return documentWidth;
+    }
+
+    return this.deps.ui.viewerScroll.clientWidth;
   }
 
   private measureCharacterWidthPx(articleStyle: CSSStyleDeclaration): number {

@@ -94,7 +94,8 @@ html,
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100%;
   color: var(--fg-primary);
   background:
     radial-gradient(80rem 20rem at 10% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%),
@@ -109,7 +110,8 @@ body {
 }
 
 #app {
-  height: 100vh;
+  height: 100%;
+  min-height: 100%;
 }
 
 .app-shell {
